@@ -243,7 +243,6 @@ function callGemini(apiKey, promptText) {
 function saveReport(reportData) {
     const ss = getSpreadsheet();
     let sheet = ss.getSheetByName(REPORT_SHEET_NAME);
-    const userEmail = Session.getActiveUser().getEmail();
 
     if (!sheet) {
         sheet = ss.insertSheet(REPORT_SHEET_NAME);
@@ -256,7 +255,7 @@ function saveReport(reportData) {
         timestampJST,
         reportData.start || "",
         reportData.end || "",
-        reportData.staffName || userEmail, // Use selected staff name, fallback to email
+        reportData.staffName || "", // Use selected staff name only
         reportData.customerId || "",
         reportData.customerName || "",
         reportData.inputText,
@@ -267,9 +266,7 @@ function saveReport(reportData) {
     return "Success";
 }
 
-function getUserEmail() {
-    return Session.getActiveUser().getEmail();
-}
+
 
 function getStaffList() {
     try {

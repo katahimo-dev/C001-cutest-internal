@@ -62,22 +62,7 @@
         <!-- Header -->
         <!-- Header -->
         <header class="bg-blue-600 text-white p-4 shadow-md z-10 sticky top-0 flex items-center justify-between">
-            <!-- User Info (Left) -->
-            <div class="flex items-center gap-2">
-                <div id="userAvatar"
-                    class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold overflow-hidden shadow-inner border border-white/30">
-                    <svg class="w-5 h-5 text-white opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                    </svg>
-                </div>
-                <div id="userEmail" class="hidden"></div>
-            </div>
-
-            <h1 class="text-xl font-bold tracking-wider absolute left-1/2 transform -translate-x-1/2">保育日報</h1>
-
-            <!-- Spacer for visual balance -->
-            <div class="w-8"></div>
+            <h1 class="text-xl font-bold tracking-wider mx-auto text-center">保育日報</h1>
         </header>
 
         <!-- Main Content -->
@@ -289,16 +274,6 @@
             populateHours();
             loadStaff(); // Load staff list
             loadData(false); // Try cache first
-
-            // Fetch User Email
-            google.script.run.withSuccessHandler(email => {
-                if (email) {
-                    const avatar = document.getElementById('userAvatar');
-                    const initial = email.charAt(0).toUpperCase();
-                    avatar.innerHTML = `<span class="text-white font-bold text-lg">${initial}</span>`;
-                    avatar.title = email;
-                }
-            }).getUserEmail();
         };
 
         function loadStaff() {
