@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>保育日報アプリ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+        }
+
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .loading-spinner {
+            border-top-color: #3b82f6;
+            border-left-color: #3b82f6;
+            animation: spin 1s infinite linear;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative bg-white shadow-xl overflow-hidden">
+
+        <!-- Header -->
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-4 shadow-md z-10 sticky top-0 flex items-center justify-between">
+            <!-- User Info (Left) -->
+            <div class="flex items-center gap-2">
+                <div id="userAvatar"
+                    class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold overflow-hidden shadow-inner border border-white/30">
+                    <svg class="w-5 h-5 text-white opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                </div>
+                <div id="userEmail" class="hidden"></div>
+            </div>
+
+            <h1 class="text-xl font-bold tracking-wider absolute left-1/2 transform -translate-x-1/2">保育日報</h1>
+
+            <!-- Spacer for visual balance -->
+            <div class="w-8"></div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow p-4 overflow-y-auto pb-24">
+
+            <!-- Filters -->
+            <div class="mb-6 space-y-3">
+                <!-- Staff Select -->
+                <div class="relative">
+                    <select id="staffSelect" onchange="onStaffChange()"
+                        class="w-full appearance-none pl-10 pr-4 py-3 rounded-xl border-none ring-1 ring-gray-200 focus:ring-2 focus:ring-blue-500 bg-white text-base shadow-sm transition-all font-medium text-gray-700">
+                        <option value="">担当者を選択</option>
+                    </select>
+                    <svg class="w-5 h-5 absolute left-3 top-3.5 text-gray-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <div class="relative flex-grow">
+                        <input type="text" id="searchInput" placeholder="顧客名で検索..."
+                            class="w-full pl-10 pr-4 py-3 rounded-xl border-none ring-1 ring-gray-200 focus:ring-2 focus:ring-blue-500 bg-gray-50 text-base shadow-sm transition-all"
+                            oninput="filterCustomers()">
+                        <svg class="w-5 h-5 absolute left-3 top-3.5 text-gray-400" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                    <!-- Refresh Button -->
+                    <button onclick="reloadData(true)" id="refreshBtn"
+                        class="px-3 bg-white text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-50 transition-colors shadow-sm flex-shrink-0 flex items-center justify-center"
+                        title="顧客情報の更新">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="relative">
+                    <select id="cityFilter" onchange="filterCustomers()"
+                        class="w-full appearance-none pl-4 pr-10 py-3 rounded-xl border-none ring-1 ring-gray-200 focus:ring-2 focus:ring-blue-500 bg-gray-50 text-base shadow-sm transition-all">
+                        <option value="">全ての地域</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Customer List -->
+            <div id="customerList" class="space-y-3">
+                <!-- Loading State -->
+                <div class="flex justify-center py-8">
+                    <div class="w-8 h-8 rounded-full border-4 border-gray-200 loading-spinner"></div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Report Modal (Overlay) -->
+        <div id="reportModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-end sm:items-center justify-center transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-md h-[90vh] sm:h-auto sm:max-h-[85vh] sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col transform transition-transform translate-y-full">
+
+                <!-- Modal Header -->
+                <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                    <div>
+                        <h2 class="font-bold text-lg text-gray-800" id="modalCustomerName">Customer Name</h2>
+                        <p class="text-xs text-gray-500" id="modalCustomerAddress">Address</p>
+                    </div>
+                    <button onclick="closeModal()"
+                        class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-4 overflow-y-auto flex-grow space-y-4">
+
+                    <!-- Time -->
+                    <div class="grid grid-cols-1 gap-4">
+                        <!-- Start Time -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
+                            <div class="flex items-center gap-2">
+                                <select id="startHour" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50"
+                                    onchange="autoSetEndTime()">
+                                    <!-- Populated by JS -->
+                                </select>
+                                <span class="text-gray-400">:</span>
+                                <select id="startMinute" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50"
+                                    onchange="autoSetEndTime()">
+                                    <option value="00">00</option>
+                                    <option value="15">15</option>
+                                    <option value="30">30</option>
+                                    <option value="45">45</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- End Time -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
+                            <div class="flex items-center gap-2">
+                                <select id="endHour" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50">
+                                    <!-- Populated by JS -->
+                                </select>
+                                <span class="text-gray-400">:</span>
+                                <select id="endMinute" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50">
+                                    <option value="00">00</option>
+                                    <option value="15">15</option>
+                                    <option value="30">30</option>
+                                    <option value="45">45</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Input -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs font-medium text-gray-500">本日のメモ (音声入力などで入力)</label>
+                            <button onclick="startVoiceInput()" id="micBtn"
+                                class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
+                                <span id="micIcon">🎤</span> <span>音声入力</span>
+                            </button>
+                        </div>
+                        <textarea id="reportInput" rows="6"
+                            class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"
+                            placeholder="訪問した際の状況や、サポート内容、会話などを自由に入力してください..."></textarea>
+
+                        <!-- Warnings Area -->
+                        <div id="warningsArea"
+                            class="hidden mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                            <strong>⚠️ 情報不足:</strong> <span id="warningsList"></span>
+                        </div>
+                    </div>
+
+                    <!-- Action -->
+                    <button onclick="generateReport()" id="generateBtn"
+                        class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transform transition-transform active:scale-95 flex items-center justify-center gap-2">
+                        <span>日報を作成する</span>
+                    </button>
+
+                    <!-- Results -->
+                    <div id="resultArea" class="hidden space-y-4 pt-4 border-t">
+                        <div class="space-y-1">
+                            <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                社内向け
+                            </h3>
+                            <textarea id="internalResult" rows="10"
+                                class="w-full p-3 bg-white rounded-lg text-sm leading-relaxed text-gray-900 border border-indigo-200 focus:ring-2 focus:ring-indigo-300 shadow-sm"></textarea>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                    保護者向け
+                                </h3>
+                                <button onclick="copyToClipboard('customerResult')"
+                                    class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded flex items-center gap-1">
+                                    📋 コピー
+                                </button>
+                            </div>
+                            <textarea id="customerResult" rows="10"
+                                class="w-full p-3 bg-white rounded-lg text-sm leading-relaxed text-gray-900 border border-green-200 focus:ring-2 focus:ring-green-300 shadow-sm"></textarea>
+                        </div>
+
+                        <button onclick="saveReport()" id="saveBtn"
+                            class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transform transition-transform active:scale-95">
+                            保存する
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast"
+        class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50 text-sm font-medium">
+        Notification Message
+    </div>
+
+    <!-- Script -->
+    <script>
+        let allCustomers = [];
+        let currentCustomer = null;
+        const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
+        const STAFF_CACHE_KEY = 'GAS_STAFF_NAME';
+        const ENC_KEY = 123; // Simple key
+
+        // Initialize
+        window.onload = function () {
+            populateHours();
+            loadStaff(); // Load staff list
+            loadData(false); // Try cache first
+
+            // Fetch User Email
+            google.script.run.withSuccessHandler(email => {
+                if (email) {
+                    const avatar = document.getElementById('userAvatar');
+                    const initial = email.charAt(0).toUpperCase();
+                    avatar.innerHTML = `<span class="text-white font-bold text-lg">${initial}</span>`;
+                    avatar.title = email;
+                }
+            }).getUserEmail();
+        };
+
+        function loadStaff() {
+            google.script.run.withSuccessHandler(staffList => {
+                const select = document.getElementById('staffSelect');
+                staffList.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    select.appendChild(option);
+                });
+
+                // Restore from cache
+                const cachedName = localStorage.getItem(STAFF_CACHE_KEY);
+                if (cachedName && staffList.includes(cachedName)) {
+                    select.value = cachedName;
+                }
+            }).getStaffList();
+        }
+
+        function onStaffChange() {
+            const val = document.getElementById('staffSelect').value;
+            if (val) {
+                localStorage.setItem(STAFF_CACHE_KEY, val);
+            } else {
+                localStorage.removeItem(STAFF_CACHE_KEY);
+            }
+        }
+
+        function populateHours() {
+            const hours = [];
+            for (let i = 0; i < 24; i++) {
+                const val = i.toString().padStart(2, '0');
+                hours.push(`<option value="${val}">${val}</option>`);
+            }
+            document.getElementById('startHour').innerHTML = hours.join('');
+            document.getElementById('endHour').innerHTML = hours.join('');
+            // Set default
+            document.getElementById('startHour').value = "09";
+            document.getElementById('endHour').value = "11";
+        }
+
+        // Light encryption (XOR + Base64)
+        function encrypt(text) {
+            try {
+                const chars = text.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY));
+                return btoa(unescape(encodeURIComponent(chars.join(''))));
+            } catch (e) { console.error(e); return null; }
+        }
+
+        function decrypt(encoded) {
+            try {
+                const chars = decodeURIComponent(escape(atob(encoded))).split('');
+                return chars.map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY)).join('');
+            } catch (e) { console.error(e); return null; }
+        }
+
+        function reloadData(force) {
+            loadData(force);
+        }
+
+        function loadData(force = false) {
+            const container = document.getElementById('customerList');
+            // Only show spinner if we don't have data or forcing
+            if (force || allCustomers.length === 0) {
+                container.innerHTML = '<div class="flex justify-center py-8"><div class="w-8 h-8 rounded-full border-4 border-gray-200 loading-spinner"></div></div>';
+            }
+
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) refreshBtn.classList.add('animate-spin');
+
+            if (!force) {
+                const cached = localStorage.getItem(CACHE_KEY);
+                if (cached) {
+                    const decrypted = decrypt(cached);
+                    if (decrypted) {
+                        try {
+                            const data = JSON.parse(decrypted);
+                            console.log("Loaded from cache");
+                            onDataLoaded(data, true);
+                            if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                            return;
+                        } catch (e) { console.error("Cache parse error", e); }
+                    }
+                }
+            }
+
+            google.script.run.withSuccessHandler((data) => {
+                // Save to cache
+                const json = JSON.stringify(data);
+                const encrypted = encrypt(json);
+                if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
+
+                onDataLoaded(data, false);
+                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                if (force) showToast('データを更新しました');
+            }).withFailureHandler((e) => {
+                onError(e);
+                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+            }).getData();
+        }
+
+        function onDataLoaded(data, fromCache) {
+            allCustomers = data.customers;
+            // Clear and rebuild filter
+            const select = document.getElementById('cityFilter');
+            select.innerHTML = '<option value="">全ての地域</option>';
+
+            populateCityFilter(data.cities);
+            renderCustomers(allCustomers);
+        }
+
+        function onError(e) {
+            showToast('Error: ' + e.message, true);
+        }
+
+        function populateCityFilter(cities) {
+            const select = document.getElementById('cityFilter');
+            cities.forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                select.appendChild(option);
+            });
+        }
+
+        function renderCustomers(customers) {
+            const container = document.getElementById('customerList');
+            container.innerHTML = '';
+
+            if (customers.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-400 py-8">該当する顧客がいません</div>';
+                return;
+            }
+
+            customers.forEach(c => {
+                const el = document.createElement('div');
+                el.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:shadow-md transition-shadow active:bg-gray-50';
+                el.onclick = () => openModal(c);
+                el.innerHTML = `
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-lg">${c.name}</h3>
+                        <p class="text-sm text-gray-500 flex items-center gap-1">
+                            <span class="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs">${c.city}</span>
+                        </p>
+                    </div>
+                    <div class="text-blue-500">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        function filterCustomers() {
+            const city = document.getElementById('cityFilter').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+
+            const filtered = allCustomers.filter(c => {
+                const matchesCity = city ? c.city === city : true;
+                const matchesSearch = c.name.toLowerCase().includes(search);
+                return matchesCity && matchesSearch;
+            });
+
+            renderCustomers(filtered);
+        }
+
+        // Modal Logic
+        const modal = document.getElementById('reportModal');
+        const modalContent = modal.querySelector('div');
+
+        function openModal(customer) {
+            currentCustomer = customer;
+            document.getElementById('modalCustomerName').textContent = customer.name;
+            document.getElementById('modalCustomerAddress').textContent = customer.address;
+
+            // Reset form
+            document.getElementById('startHour').value = "09";
+            document.getElementById('startMinute').value = "00";
+            autoSetEndTime(); // Trigger calc
+
+            document.getElementById('reportInput').value = '';
+            document.getElementById('warningsArea').classList.add('hidden');
+            document.getElementById('resultArea').classList.add('hidden');
+
+            modal.classList.remove('hidden');
+            // Animation hack
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modalContent.classList.remove('translate-y-full');
+            }, 10);
+        }
+
+        function closeModal() {
+            modal.classList.add('opacity-0');
+            modalContent.classList.add('translate-y-full');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                currentCustomer = null;
+            }, 300);
+        }
+
+        function autoSetEndTime() {
+            const sH = parseInt(document.getElementById('startHour').value);
+            const sM = document.getElementById('startMinute').value;
+
+            if (isNaN(sH)) return; // safety
+
+            // Add 2 hours
+            let eH = sH + 2;
+            if (eH >= 24) eH -= 24;
+
+            const pad = (n) => n.toString().padStart(2, '0');
+            document.getElementById('endHour').value = pad(eH);
+            document.getElementById('endMinute').value = sM;
+        }
+
+        function generateReport() {
+            const input = document.getElementById('reportInput').value;
+
+            const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+            const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+
+            if (!input.trim()) {
+                showToast('メモを入力してください');
+                return;
+            }
+
+            const btn = document.getElementById('generateBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div> 生成中...';
+
+            google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
+                showToast('Error: ' + e.message, true);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }).generateReportWithWarnings({
+                text: input,
+                start: start,
+                end: end
+            });
+        }
+
+        function onReportGenerated(result) {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = false;
+            btn.innerHTML = '<span>日報を作成する</span>'; // Reset
+
+            // Warnings
+            const warningsArea = document.getElementById('warningsArea');
+            if (result.warnings && result.warnings.length > 0) {
+                document.getElementById('warningsList').textContent = result.warnings.join(', ');
+                warningsArea.classList.remove('hidden');
+                // Scroll to Warnings
+                warningsArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                warningsArea.classList.add('hidden');
+                // Scroll to Results
+                document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            // Results (Set value for textarea)
+            document.getElementById('internalResult').value = result.internal;
+            document.getElementById('customerResult').value = result.customer;
+            document.getElementById('resultArea').classList.remove('hidden');
+        }
+
+        function saveReport() {
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true;
+            btn.textContent = '保存中...';
+
+            const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+            const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+
+            google.script.run.withSuccessHandler(() => {
+                showToast('保存しました');
+                closeModal();
+                btn.disabled = false;
+                btn.textContent = '保存する';
+            }).saveReport({
+                customerId: currentCustomer.id,
+                customerName: currentCustomer.name,
+                inputText: document.getElementById('reportInput').value,
+                start: start,
+                end: end,
+                internalText: document.getElementById('internalResult').value,
+                customerText: document.getElementById('customerResult').value,
+                staffName: document.getElementById('staffSelect').value // Send selected staff
+            });
+        }
+
+        // Voice Input
+        function startVoiceInput() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                showToast('このブラウザはWeb Speech APIによる音声入力に対応していません。', true);
+                return;
+            }
+
+            const micBtn = document.getElementById('micBtn');
+            if (micBtn.disabled) return; // Prevent double click
+
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            // UI updating
+            micBtn.disabled = true;
+            micBtn.classList.add('bg-red-100', 'text-red-700');
+            micBtn.innerHTML = '<span class="animate-pulse">🔴</span> <span>聞いています...</span>';
+
+            recognition.start();
+
+            recognition.onresult = function (event) {
+                const transcript = event.results[0][0].transcript;
+                const textarea = document.getElementById('reportInput');
+                textarea.value = (textarea.value ? textarea.value + "\n" : "") + transcript;
+            };
+
+            // Using onend to guaranteed cleanup
+            recognition.onend = function () {
+                resetMicBtn();
+            };
+
+            recognition.onerror = function (event) {
+                console.error(event.error);
+                // Alert specifically for troubleshooting
+                if (event.error === 'not-allowed') {
+                    showToast('マイクの使用が許可されていません。ブラウザの設定で許可してください。', true);
+                } else if (event.error === 'no-speech') {
+                    // Ignore, just silence
+                } else if (event.error === 'network') {
+                    showToast('音声認識サーバーへの接続に失敗しました。', true);
+                } else {
+                    showToast('音声入力エラー: ' + event.error, true);
+                }
+                resetMicBtn();
+            };
+        }
+
+        function resetMicBtn() {
+            const micBtn = document.getElementById('micBtn');
+            micBtn.disabled = false;
+            micBtn.classList.remove('bg-red-100', 'text-red-700');
+            micBtn.innerHTML = '<span id="micIcon">🎤</span> <span>音声入力</span>';
+        }
+
+        function copyToClipboard(elementId) {
+            const el = document.getElementById(elementId);
+            el.select();
+            document.execCommand('copy');
+            showToast('コピーしました');
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.remove('bg-gray-800', 'bg-red-600', 'opacity-0', 'translate-y-4');
+
+            if (isError) {
+                toast.classList.add('bg-red-600');
+            } else {
+                toast.classList.add('bg-gray-800');
+            }
+
+            // Show
+            toast.classList.remove('opacity-0');
+
+            // Hide after 3s
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>
