@@ -268,6 +268,27 @@ function saveReport(reportData) {
 
 
 
+
+function verifyLogin(email, password) {
+    try {
+        const ss = SpreadsheetApp.openById(STAFF_SS_ID);
+        const sheet = ss.getSheets().find(s => s.getSheetId() == STAFF_GID);
+        if (!sheet) return { success: false, message: "Staff sheet not found" };
+
+        const data = sheet.getDataRange().getValues().slice(1); // Skip header
+        // Col B(1): Name, E(4): Email, H(7): Password
+        const user = data.find(row => row[4] == email && row[7] == password);
+
+        if (user) {
+            return { success: true, name: user[1] };
+        } else {
+            return { success: false, message: "Invalid email or password" };
+        }
+    } catch (e) {
+        return { success: false, message: e.message };
+    }
+}
+
 function getStaffList() {
     try {
         const ss = SpreadsheetApp.openById(STAFF_SS_ID);
