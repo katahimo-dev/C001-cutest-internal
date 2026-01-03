@@ -244,8 +244,9 @@
                             <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
                                 社内向け
+                                <span id="internalCount" class="text-xs text-gray-500 font-normal ml-2">0文字</span>
                             </h3>
-                            <textarea id="internalResult" rows="10"
+                            <textarea id="internalResult" rows="10" oninput="updateCharCounts()"
                                 class="w-full p-3 bg-white rounded-lg text-sm leading-relaxed text-gray-900 border border-indigo-200 focus:ring-2 focus:ring-indigo-300 shadow-sm"></textarea>
                         </div>
                         <div class="space-y-1">
@@ -253,13 +254,14 @@
                                 <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
                                     <span class="w-2 h-2 rounded-full bg-green-500"></span>
                                     保護者向け
+                                    <span id="customerCount" class="text-xs text-gray-500 font-normal ml-2">0文字</span>
                                 </h3>
                                 <button onclick="copyToClipboard('customerResult')"
                                     class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded flex items-center gap-1">
                                     📋 コピー
                                 </button>
                             </div>
-                            <textarea id="customerResult" rows="10"
+                            <textarea id="customerResult" rows="10" oninput="updateCharCounts()"
                                 class="w-full p-3 bg-white rounded-lg text-sm leading-relaxed text-gray-900 border border-green-200 focus:ring-2 focus:ring-green-300 shadow-sm"></textarea>
                         </div>
 
@@ -285,6 +287,7 @@
     <script>
         let allCustomers = [];
         let currentCustomer = null;
+        let currentStaffName = '';
         const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
         const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
         const ENC_KEY = 123; // Simple key
@@ -579,10 +582,28 @@
                 document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
 
+            // Append signature to customer report
+            let customerText = result.customer;
+            if (currentStaffName) {
+                const parts = currentStaffName.split(/[\s　]+/);
+                if (parts.length > 0) {
+                    customerText += '\n\n' + parts[0];
+                }
+            }
+
             // Results (Set value for textarea)
             document.getElementById('internalResult').value = result.internal;
-            document.getElementById('customerResult').value = result.customer;
+            document.getElementById('customerResult').value = customerText;
             document.getElementById('resultArea').classList.remove('hidden');
+
+            updateCharCounts();
+        }
+
+        function updateCharCounts() {
+            const internalLen = document.getElementById('internalResult').value.length;
+            const customerLen = document.getElementById('customerResult').value.length;
+            document.getElementById('internalCount').textContent = internalLen + '文字';
+            document.getElementById('customerCount').textContent = customerLen + '文字';
         }
 
         function saveReport() {
@@ -607,6 +628,7 @@
                 internalText: document.getElementById('internalResult').value,
                 customerText: document.getElementById('customerResult').value,
                 staffName: currentStaffName // Send login staff name
+
             });
         }
 
