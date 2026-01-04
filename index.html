@@ -223,10 +223,16 @@
                     <div>
                         <div class="flex justify-between items-center mb-1">
                             <label class="block text-xs font-medium text-gray-500">メモ (音声入力などで入力)</label>
-                            <button onclick="startVoiceInput()" id="micBtn"
-                                class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
-                                <span id="micIcon">🎤</span> <span>音声入力</span>
-                            </button>
+                            <div class="flex gap-2">
+                                <button onclick="toggleHint()" id="hintBtn"
+                                    class="hidden text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
+                                    💡 書き方のヒント
+                                </button>
+                                <button onclick="startVoiceInput()" id="micBtn"
+                                    class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
+                                    <span id="micIcon">🎤</span> <span>音声入力</span>
+                                </button>
+                            </div>
                         </div>
                         <textarea id="reportInput" rows="6"
                             class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"
@@ -342,11 +348,32 @@
     </div>
 
     <!-- Script -->
+    <!-- Hint Modal -->
+    <div id="hintModal"
+        class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center transition-opacity opacity-0">
+        <div
+            class="bg-white w-full max-w-lg mx-4 rounded-xl shadow-2xl flex flex-col max-h-[80vh] transform transition-transform scale-95">
+            <div class="p-4 border-b flex justify-between items-center bg-indigo-50 rounded-t-xl">
+                <h3 class="font-bold text-gray-800">事故報告書の書き方ヒント</h3>
+                <button onclick="toggleHint()"
+                    class="p-2 hover:bg-indigo-100 rounded-full text-indigo-500">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-700" id="hintContent">
+                <!-- Content loaded from JS -->
+            </div>
+            <div class="p-4 border-t bg-gray-50 rounded-b-xl text-right">
+                <button onclick="toggleHint()"
+                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let allCustomers = [];
         let currentCustomer = null;
         let currentStaffName = '';
         let currentReportMode = 'daily'; // 'daily' or 'accident'
+        let uiConfig = {};
 
         const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
         const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
@@ -356,12 +383,25 @@
         window.onload = function () {
             populateHours();
             checkLogin();
+            loadUiConfig();
         };
+
+        function loadUiConfig() {
+            google.script.run.withSuccessHandler(config => {
+                uiConfig = config;
+                // Apply default placeholder based on current mode defaults or just wait for switch
+                if (currentReportMode === 'daily' && uiConfig.dailyPlaceholder) {
+                    document.getElementById('reportInput').placeholder = uiConfig.dailyPlaceholder;
+                }
+            }).getUiConfig();
+        }
 
         function switchMode(mode) {
             currentReportMode = mode;
             const tabDaily = document.getElementById('tabDaily');
             const tabAccident = document.getElementById('tabAccident');
+            const hintBtn = document.getElementById('hintBtn');
+            const input = document.getElementById('reportInput');
 
             // UI Toggle
             if (mode === 'daily') {
@@ -371,9 +411,10 @@
                 document.getElementById('endTimeContainer').classList.remove('hidden');
                 document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
 
+                hintBtn.classList.add('hidden');
+                input.placeholder = uiConfig.dailyPlaceholder || "状況や内容を自由に入力してください...";
+
                 // Show/Hide results based on previous state
-                // Actually easier to just hide both results and require regeneration if context switched?
-                // Or just hide the irrelevant result container.
                 const hasDailyResult = document.getElementById('internalResult').value !== '';
                 if (hasDailyResult) {
                     document.getElementById('resultArea').classList.remove('hidden');
@@ -388,8 +429,11 @@
                 tabDaily.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
                 tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
 
-                document.getElementById('endTimeContainer').classList.add('hidden'); // Not strictly needed for accident occurrence
+                document.getElementById('endTimeContainer').classList.add('hidden');
                 document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
+
+                hintBtn.classList.remove('hidden');
+                input.placeholder = uiConfig.accidentPlaceholder || "事故の状況を詳しく入力してください...";
 
                 document.getElementById('resultArea').classList.add('hidden');
 
@@ -413,6 +457,18 @@
                 loadData(false);
             } else {
                 document.getElementById('loginModal').classList.remove('hidden');
+            }
+        }
+
+        function toggleHint() {
+            const modal = document.getElementById('hintModal');
+            if (modal.classList.contains('hidden')) {
+                document.getElementById('hintContent').textContent = uiConfig.accidentHint || "Loading...";
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            } else {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
             }
         }
 
