@@ -91,6 +91,16 @@
         <header class="bg-blue-600 text-white p-4 shadow-md z-10 sticky top-0 flex items-center justify-between">
             <h1 class="text-xl font-bold tracking-wider">保育日報</h1>
             <div class="flex items-center gap-3">
+                <button onclick="openSettings()" id="settingsBtn"
+                    class="hidden p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors" title="設定">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                        </path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
                 <span id="headerUserName" class="text-sm font-medium opacity-90"></span>
                 <button onclick="doLogout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
                     title="ログアウト">
@@ -176,6 +186,20 @@
                         class="flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors">保育日報</button>
                     <button onclick="switchMode('accident')" id="tabAccident"
                         class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors">事故報告</button>
+                </div>
+
+                <!-- Family Selector -->
+                <div class="px-4 pt-3 pb-1 bg-blue-50">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">対象のお子様</label>
+                    <select id="familySelector" onchange="onFamilySelect()"
+                        class="w-full p-2 text-sm border-gray-300 rounded mb-2">
+                        <option value="">(選択してください)</option>
+                    </select>
+                    <div id="familyInfoBox"
+                        class="hidden text-xs text-gray-700 bg-white p-2 rounded border border-blue-100 mb-2">
+                        <p><span class="font-bold">アレルギー:</span> <span id="familyAllergy"></span></p>
+                        <p><span class="font-bold">特記事項:</span> <span id="familyInfo"></span></p>
+                    </div>
                 </div>
 
                 <!-- Modal Body -->
@@ -284,6 +308,18 @@
                         <h3 class="text-sm font-bold text-gray-800 border-b pb-2">事故報告書ドラフト</h3>
 
                         <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500">対象者氏名</label>
+                                    <input type="text" id="accTargetName"
+                                        class="w-full p-2 rounded border border-gray-300 text-sm bg-gray-50" readonly>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500">生年月日</label>
+                                    <input type="text" id="accTargetDob"
+                                        class="w-full p-2 rounded border border-gray-300 text-sm bg-gray-50" readonly>
+                                </div>
+                            </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-500">発生日時</label>
                                 <input type="text" id="accOccurrenceTime"
@@ -368,6 +404,37 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settingsModal"
+        class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h2 class="text-xl font-bold text-gray-800 border-b pb-2">設定・データ管理</h2>
+
+            <div class="space-y-3">
+                <label class="block text-sm font-medium text-gray-700">顧客データ一括更新 (CSV)</label>
+
+                <div class="flex items-center gap-2 mb-2">
+                    <label class="text-xs text-gray-500">文字コード:</label>
+                    <select id="csvEncoding" class="text-sm border border-gray-300 rounded p-1">
+                        <option value="UTF-8">UTF-8</option>
+                        <option value="Shift_JIS" selected>Shift_JIS (Excel等)</option>
+                    </select>
+                </div>
+
+                <input type="file" id="csvFile" accept=".csv"
+                    class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                <p class="text-xs text-gray-400">※Shift-JISまたはUTF-8。顧客IDをキーに更新します。</p>
+            </div>
+
+            <div class="pt-4 flex gap-3">
+                <button onclick="closeSettings()"
+                    class="flex-1 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors">キャンセル</button>
+                <button onclick="handleFileUpload()" id="uploadBtn"
+                    class="flex-1 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">アップロード</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let allCustomers = [];
         let currentCustomer = null;
@@ -377,6 +444,7 @@
 
         const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
         const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
+        const STAFF_ADMIN_KEY = 'GAS_STAFF_ADMIN';
         const ENC_KEY = 123; // Simple key
 
         // Initialize
@@ -385,6 +453,29 @@
             checkLogin();
             loadUiConfig();
         };
+
+        // ... loadUiConfig ...
+        // ... switchMode ...
+
+        function checkLogin() {
+            const savedName = localStorage.getItem(STAFF_CACHE_KEY);
+            if (savedName) {
+                currentStaffName = savedName;
+                document.getElementById('headerUserName').textContent = savedName + ' さん';
+                document.getElementById('loginModal').classList.add('hidden');
+
+                // Admin check
+                if (localStorage.getItem(STAFF_ADMIN_KEY) === 'true') {
+                    document.getElementById('settingsBtn').classList.remove('hidden');
+                } else {
+                    document.getElementById('settingsBtn').classList.add('hidden');
+                }
+
+                loadData(false);
+            } else {
+                document.getElementById('loginModal').classList.remove('hidden');
+            }
+        }
 
         function loadUiConfig() {
             google.script.run.withSuccessHandler(config => {
@@ -448,18 +539,6 @@
             }
         }
 
-        function checkLogin() {
-            const savedName = localStorage.getItem(STAFF_CACHE_KEY);
-            if (savedName) {
-                currentStaffName = savedName;
-                document.getElementById('headerUserName').textContent = savedName + ' さん';
-                document.getElementById('loginModal').classList.add('hidden');
-                loadData(false);
-            } else {
-                document.getElementById('loginModal').classList.remove('hidden');
-            }
-        }
-
         function toggleHint() {
             const modal = document.getElementById('hintModal');
             if (modal.classList.contains('hidden')) {
@@ -471,8 +550,6 @@
                 setTimeout(() => modal.classList.add('hidden'), 300);
             }
         }
-
-        // ... existing login/logout ...
 
         function doLogin() {
             const email = document.getElementById('loginEmail').value;
@@ -495,6 +572,16 @@
                 if (res.success) {
                     currentStaffName = res.name;
                     localStorage.setItem(STAFF_CACHE_KEY, res.name);
+
+                    // Admin Handling
+                    if (res.isAdmin) {
+                        localStorage.setItem(STAFF_ADMIN_KEY, 'true');
+                        document.getElementById('settingsBtn').classList.remove('hidden');
+                    } else {
+                        localStorage.removeItem(STAFF_ADMIN_KEY);
+                        document.getElementById('settingsBtn').classList.add('hidden');
+                    }
+
                     document.getElementById('headerUserName').textContent = res.name + ' さん';
                     document.getElementById('loginModal').classList.add('hidden');
                     loadData(false);
@@ -510,7 +597,49 @@
 
         function doLogout() {
             localStorage.removeItem(STAFF_CACHE_KEY);
+            localStorage.removeItem(STAFF_ADMIN_KEY);
             location.reload();
+        }
+
+        // Settings Modal Logic
+        function openSettings() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        function handleFileUpload() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("ファイルを選択してください");
+                return;
+            }
+
+            const btn = document.getElementById('uploadBtn');
+            btn.disabled = true;
+            btn.textContent = "アップロード中...";
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const content = e.target.result;
+                google.script.run.withSuccessHandler(res => {
+                    alert(res);
+                    btn.disabled = false;
+                    btn.textContent = "アップロード";
+                    closeSettings();
+                    // Optionally refresh data if the app is now using the new DB
+                    // reloadData(true);
+                }).withFailureHandler(err => {
+                    alert("Error: " + err.message);
+                    btn.disabled = false;
+                    btn.textContent = "アップロード";
+                }).uploadCustomerCsv(content);
+            };
+            const encoding = document.getElementById('csvEncoding').value;
+            reader.readAsText(file, encoding);
         }
 
         function populateHours() {
@@ -568,13 +697,19 @@
             }
 
             google.script.run.withSuccessHandler((data) => {
-                const json = JSON.stringify(data);
-                const encrypted = encrypt(json);
-                if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
+                try {
+                    const json = JSON.stringify(data);
+                    const encrypted = encrypt(json);
+                    if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
 
-                onDataLoaded(data, false);
-                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
-                if (force) showToast('データを更新しました');
+                    onDataLoaded(data, false);
+                    if (force) showToast('データを更新しました');
+                } catch (e) {
+                    console.error("Success Handler Error:", e);
+                    showToast("データ処理エラー: " + e.message, true);
+                } finally {
+                    if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                }
             }).withFailureHandler((e) => {
                 onError(e);
                 if (refreshBtn) refreshBtn.classList.remove('animate-spin');
@@ -645,6 +780,25 @@
             document.getElementById('modalCustomerName').textContent = customer.name;
             document.getElementById('modalCustomerAddress').textContent = customer.address;
 
+            // Populate Family Selector
+            const famSelect = document.getElementById('familySelector');
+            famSelect.innerHTML = '<option value="">(選択してください)</option>';
+            if (customer.family && customer.family.length > 0) {
+                customer.family.forEach((fam, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = idx; // Use index to retrieve data
+                    opt.textContent = fam.name;
+                    famSelect.appendChild(opt);
+                });
+            }
+            // Auto Select first child or reset
+            if (customer.family && customer.family.length > 0) {
+                famSelect.value = "0";
+            } else {
+                famSelect.value = "";
+            }
+            onFamilySelect(); // Updates UI based on selection
+
             // Reset form
             document.getElementById('startHour').value = "09";
             document.getElementById('startMinute').value = "00";
@@ -674,6 +828,29 @@
                 modal.classList.remove('opacity-0');
                 modalContent.classList.remove('translate-y-full');
             }, 10);
+        }
+
+        function onFamilySelect() {
+            const idx = document.getElementById('familySelector').value;
+            const infoBox = document.getElementById('familyInfoBox');
+
+            if (idx === "") {
+                infoBox.classList.add('hidden');
+                document.getElementById('accTargetName').value = '';
+                document.getElementById('accTargetDob').value = '';
+                return;
+            }
+
+            const fam = currentCustomer.family[idx];
+            if (fam) {
+                document.getElementById('familyAllergy').textContent = fam.allergy || 'なし';
+                document.getElementById('familyInfo').textContent = fam.info || 'なし';
+                infoBox.classList.remove('hidden');
+
+                // Auto-fill Accident fields
+                document.getElementById('accTargetName').value = fam.name;
+                document.getElementById('accTargetDob').value = fam.dob;
+            }
         }
 
         function closeModal() {
@@ -833,6 +1010,8 @@
                     customerId: currentCustomer.id,
                     customerName: currentCustomer.name,
                     staffName: currentStaffName,
+                    targetName: document.getElementById('accTargetName').value,
+                    targetDob: document.getElementById('accTargetDob').value,
                     inputText: document.getElementById('reportInput').value,
                     occurrenceTime: document.getElementById('accOccurrenceTime').value,
                     location: document.getElementById('accLocation').value,

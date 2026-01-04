@@ -161,63 +161,73 @@ function getSheetByGid(ss, gid) {
  */
 function getData() {
     const ss = getSpreadsheet();
-    const sheet = getSheetByGid(ss, TARGET_GID);
+    let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
+    let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
 
-    // If sheet doesn't exist, return empty
-    if (!sheet) return { cities: [], customers: [] };
+    // Fallback if sheets don't exist yet (return empty)
+    if (!cSheet || !fSheet) return { cities: [], customers: [] };
 
-    const data = sheet.getDataRange().getValues();
-    // Assuming row 1 is header, data starts from row 2
-    const rows = data.slice(1);
+    const cData = cSheet.getDataRange().getValues();
+    const fData = fSheet.getDataRange().getValues();
 
-    const customers = rows.map((row, index) => {
-        // B column is index 1 (Surname)
-        // C column is index 2 (Given Name)
-        // S column is index 18 (Address)
-        const customerId = row[0];
-        const lastName = row[1];
-        const firstName = row[2];
-        const address = row[18];
+    // Headers are row 0. Data starts row 1.
+    const cRows = cData.slice(1);
+    const fRows = fData.slice(1);
 
-        if (!lastName) return null;
+    // Helper to safe string
+    const toStr = (val) => (val === null || val === undefined) ? "" : String(val);
+    const fmtDate = (val) => {
+        if (val instanceof Date) {
+            return Utilities.formatDate(val, "Asia/Tokyo", "yyyy/MM/dd");
+        }
+        return toStr(val);
+    };
 
-        const name = `${lastName} ${firstName}`;
+    // Map Families by CustomerID
+    const familyMap = {};
+    fRows.forEach(row => {
+        const cId = toStr(row[0]);
+        if (!cId) return;
+        if (!familyMap[cId]) familyMap[cId] = [];
+        familyMap[cId].push({
+            name: toStr(row[1]),
+            dob: fmtDate(row[2]),
+            job: toStr(row[3]),
+            allergy: toStr(row[4]),
+            info: toStr(row[5])
+        });
+    });
 
-        // Extract City: "〇〇市"
-        let city = "その他";
+    const customers = cRows.map(row => {
+        const id = toStr(row[0]);
+        if (!id) return null; // Skip empty IDs
+
+        const name = toStr(row[1]);
+        const address = toStr(row[2]);
+
+        // Extract City
+        let city = '';
         if (address) {
-            // Match anything ending in 市.
-            // Often addresses are "State City ...". We want the "City".
-            // Simplest heuristic: grab the first occurrence of "...市"
-            // Or look for 県...市?
-            // User example: "〇〇市" suggests we just want the City part.
-            // Let's crudely regex for `(\S+市)` or just look for '市' index.
-            // Better: `(東京都|北海道|...)(...市|...区|...郡)`?
-            // Simple approach: Match /(.+?市)/
-            const cityMatch = address.match(/(.+?市)/);
+            const cityMatch = address.match(/(?:東京都|北海道|(?:京都|大阪)府|.{2,3}県)([^市区町村]+[市区町村])/);
             if (cityMatch) {
-                // If address starts with Prefecture, keep it? Or just the city?
-                // Usually "XX市" implies just the city name?
-                // "住所から〇〇市を抜き出して" -> Extract "City".
-                // We will use the match.
                 city = cityMatch[1];
-
-                // Cleanup: sometimes it includes prefecture. 
-                // If it's too long, maybe trim? But for filter "Yokohama-shi" is fine.
-                // We'll leave it as the extracted chunk ending in 市.
+            } else {
+                const simpleMatch = address.match(/^([^0-9]+?[市区町村])/);
+                if (simpleMatch) city = simpleMatch[1];
             }
         }
 
         return {
-            id: customerId, // Use the ID from Column A
+            id: id,
             name: name,
             address: address,
-            city: city
+            city: city,
+            family: familyMap[id] || []
         };
     }).filter(c => c !== null);
 
     // Unique cities for filter
-    const cities = [...new Set(customers.map(c => c.city))].sort();
+    const cities = [...new Set(customers.map(c => c.city).filter(c => c))].sort();
 
     return { cities, customers };
 }
@@ -407,6 +417,8 @@ function saveAccidentReport(reportData) {
         reportData.staffName || "",
         reportData.customerId || "",
         reportData.customerName || "",
+        reportData.targetName || "",
+        reportData.targetDob || "",
         reportData.occurrenceTime,
         reportData.location,
         reportData.accidentContent,
@@ -435,13 +447,158 @@ function verifyLogin(email, password) {
         const user = data.find(row => row[4] == email && row[7] == password);
 
         if (user) {
-            return { success: true, name: user[1] };
+            return { success: true, name: user[1], isAdmin: (user[8] == 1) };
         } else {
             return { success: false, message: "Invalid email or password" };
         }
     } catch (e) {
         return { success: false, message: e.message };
     }
+}
+
+const CUSTOMER_DB_NAME = '顧客DB_New';
+const FAMILY_DB_NAME = '家族DB_New';
+
+function uploadCustomerCsv(csvContent) {
+    const ss = getSpreadsheet();
+    let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
+    let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
+
+    // Create sheets if not exist
+    if (!cSheet) {
+        cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
+        cSheet.appendRow(['ID', 'Name', 'Address']); // Minimal key fields
+    }
+    if (!fSheet) {
+        fSheet = ss.insertSheet(FAMILY_DB_NAME);
+        fSheet.appendRow(['CustomerID', 'Name', 'DOB', 'Job', 'Allergy', 'Info']);
+    }
+
+    // Detect Delimiter (Simple Heuristic: check first line)
+    const firstLine = csvContent.substring(0, csvContent.indexOf('\n'));
+    let delimiter = ',';
+    if (firstLine.indexOf('\t') !== -1 && (firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
+        delimiter = '\t';
+    }
+
+    // Parse CSV
+    const rows = Utilities.parseCsv(csvContent, delimiter);
+    if (rows.length < 2) return "No data found";
+
+    // Column Mapping
+    const header = rows[0];
+    let idxId = -1, idxName = -1, idxAddr = -1, idxFamily = -1;
+
+    for (let i = 0; i < header.length; i++) {
+        const col = String(header[i]).trim();
+        if (col.includes("ID") && !col.includes("Benefit")) idxId = i;
+        else if (col.includes("顧客ID")) idxId = i; // Fallback
+
+        if (col.includes("氏名") || col.includes("Name")) idxName = i;
+        if (col.includes("住所") || col.includes("Address")) idxAddr = i;
+        if (col.includes("世帯全員の情報") || col.includes("Family")) idxFamily = i;
+    }
+
+    // Fallbacks if not found (based on user spec)
+    if (idxId === -1) idxId = 0; // Default A
+    if (idxName === -1) idxName = 1; // Default B
+    if (idxAddr === -1) idxAddr = 18; // Default S
+    if (idxFamily === -1) idxFamily = 24; // Default Y
+
+    // Read existing data for Upsert
+    const cData = cSheet.getDataRange().getValues();
+    const cMap = new Map();
+    for (let i = 1; i < cData.length; i++) cMap.set(String(cData[i][0]), i + 1); // ID -> RowNum
+
+    const fData = fSheet.getDataRange().getValues();
+    const fHeader = fData[0];
+    let fRows = fData.slice(1);
+
+    // IDs in the CSV
+    const csvIds = new Set();
+    // Pre-scan to gather IDs for filtering families
+    for (let i = 1; i < rows.length; i++) {
+        if (rows[i].length > idxId) csvIds.add(String(rows[i][idxId]));
+    }
+
+    // Filter out families of affected customers
+    fRows = fRows.filter(r => !csvIds.has(String(r[0])));
+
+    const newCRows = [];
+    const updates = []; // {row: x, val: []}
+    const newFRows = [];
+
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length <= idxId) continue;
+
+        const id = String(row[idxId]);
+        // Safety checks for indices
+        const name = (idxName < row.length) ? row[idxName] : "";
+        const address = (idxAddr < row.length) ? row[idxAddr] : "";
+        const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
+
+        // Customer Upsert
+        if (cMap.has(id)) {
+            updates.push({ row: cMap.get(id), values: [id, name, address] });
+        } else {
+            newCRows.push([id, name, address]);
+        }
+
+        // Family Parsing
+        if (familyRaw) {
+            const blocks = familyRaw.split(/[\r\n]+/).filter(line => line.trim() !== "");
+            blocks.forEach(line => {
+                // "鈴木 健一 1982/02/14 自営業 ..."
+                // Assumption: Name is first 1 or 2 parts. 
+                // To be robust: Date like YYYY/MM/DD is likely DOB.
+                const parts = line.trim().split(/[\s　]+/);
+
+                // Heuristic: Find DOB index
+                let dobIndex = -1;
+                for (let j = 0; j < parts.length; j++) {
+                    if (parts[j].match(/\d{4}\/\d{1,2}\/\d{1,2}/)) {
+                        dobIndex = j;
+                        break;
+                    }
+                }
+
+                if (dobIndex !== -1) {
+                    const fName = parts.slice(0, dobIndex).join(" ");
+                    const fDob = parts[dobIndex];
+                    const fJob = (dobIndex + 1 < parts.length) ? parts[dobIndex + 1] : "";
+                    const fAllergy = (dobIndex + 2 < parts.length) ? parts[dobIndex + 2] : "";
+                    const fInfo = (dobIndex + 3 < parts.length) ? parts.slice(dobIndex + 3).join(" ") : "";
+                    fRows.push([id, fName, fDob, fJob, fAllergy, fInfo]);
+                } else {
+                    // Fallback if no date found: just dump
+                    if (parts.length > 0) {
+                        const fName = parts[0] + (parts.length > 1 ? " " + parts[1] : "");
+                        const fRest = parts.slice(2).join(" ");
+                        fRows.push([id, fName, "", "", "", fRest]);
+                    }
+                }
+            });
+        }
+    }
+
+    // Batch Update Customers
+    updates.forEach(u => {
+        cSheet.getRange(u.row, 1, 1, 3).setValues([u.values]);
+    });
+    if (newCRows.length > 0) {
+        cSheet.getRange(cSheet.getLastRow() + 1, 1, newCRows.length, 3).setValues(newCRows);
+    }
+
+    // Rewrite Families (Filtering old + Adding new)
+    if (fRows.length > 0) {
+        fSheet.getRange(2, 1, fSheet.getLastRow(), fHeader.length).clearContent();
+        fSheet.getRange(2, 1, fRows.length, fHeader.length).setValues(fRows);
+    } else {
+        if (fSheet.getLastRow() > 1) fSheet.getRange(2, 1, fSheet.getLastRow() - 1, fHeader.length).clearContent();
+    }
+
+    return "Upload Successful";
 }
 
 function getStaffList() {
