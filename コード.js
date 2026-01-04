@@ -9,7 +9,8 @@ const REPORT_SHEET_NAME = '日報';
 const STAFF_SS_ID = "1yfVdlHeptbGZxTawIQjGLZu60T4726tEveLjOO-aL6Q";
 const STAFF_GID = 939066637;
 const PROMPT_KEYS = {
-    GENERATE_WITH_WARNINGS: 'GenerateWithWarnings'
+    GENERATE_WITH_WARNINGS: 'GenerateWithWarnings',
+    GENERATE_ACCIDENT: 'GenerateAccident'
 };
 
 const DEFAULT_PROMPTS = {
@@ -36,6 +37,36 @@ const DEFAULT_PROMPTS = {
   "warnings": ["不足項目名1", "不足項目名2"], // なければ空配列 []
   "internal": "社内向けレポート内容（事実・客観的）。不足部分は推測せず、入力内容のみで構成。",
   "customer": "保護者向けレポート内容（親しみやすく）。不足部分は推測せず、入力内容のみで構成。"
+}
+`,
+    [PROMPT_KEYS.GENERATE_ACCIDENT]: `
+あなたは保育園の事故報告書作成を支援するAIです。
+入力された状況説明（メモ）から、以下の項目に整理・分解してJSON形式で出力してください。
+
+# 入力テキスト
+{anonymizedText}
+時間情報: {timeInfo}
+
+# 出力項目とルール
+- occurrenceTime: 発生日時（令和〇年〇月〇日...の形式が望ましいが、入力から推測できる範囲で。不明なら「要確認」としてください）
+- location: 発生場所（施設名＋部屋名、屋外ならエリアなど）
+- accidentContent: 事故内容（端的な見出し。例：転倒による額切創）
+- situation: 発生状況（5W1H、時系列。推測は避け事実のみ）
+- immediateResponse: 発生時の対応（誰が、何分後に、何をしたか。タイムライン形式など）
+- parentCorrespondence: 保護者への対応（連絡手段、時刻、反応、受診予定など）
+- diagnosisTreatment: 診断名および処置状況/必要診察日数（未受診なら「診療前」と明記）
+- prevention: 事故防止に向けた今後の対応（原因分析、一次対策、恒久対策）
+
+# 出力フォーマット (JSON)
+{
+  "occurrenceTime": "...",
+  "location": "...",
+  "accidentContent": "...",
+  "situation": "...",
+  "immediateResponse": "...",
+  "parentCorrespondence": "...",
+  "diagnosisTreatment": "...",
+  "prevention": "..."
 }
 `
 };
@@ -261,6 +292,77 @@ function saveReport(reportData) {
         reportData.inputText,
         reportData.internalText,
         reportData.customerText,
+    ]);
+
+    return "Success";
+}
+
+/**
+ * Generates accident report decomposition.
+ */
+function generateAccidentReport(inputData) {
+    const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!apiKey) return { error: "API Key Missing" };
+
+    let promptTemplate = getPrompt(PROMPT_KEYS.GENERATE_ACCIDENT);
+    if (!promptTemplate) promptTemplate = DEFAULT_PROMPTS[PROMPT_KEYS.GENERATE_ACCIDENT];
+
+    let text = "";
+    let timeInfo = "時間指定なし";
+
+    if (typeof inputData === 'string') {
+        text = inputData;
+    } else {
+        text = inputData.text;
+        if (inputData.start && inputData.end) {
+            timeInfo = `${inputData.start}〜${inputData.end}`;
+        } else if (inputData.start) {
+            timeInfo = inputData.start; // Just occurrence time
+        }
+    }
+
+    let prompt = promptTemplate.replace('{anonymizedText}', text);
+    prompt = prompt.replace('{timeInfo}', timeInfo);
+
+    return callGemini(apiKey, prompt);
+}
+
+const ACCIDENT_SHEET_NAME = '事故報告';
+const PROMPT_ACCIDENT_KEY = 'GenerateAccident';
+
+/**
+ * Saves the accident report to 'AccidentReports' sheet.
+ */
+function saveAccidentReport(reportData) {
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName(ACCIDENT_SHEET_NAME);
+
+    if (!sheet) {
+        sheet = ss.insertSheet(ACCIDENT_SHEET_NAME);
+        sheet.appendRow([
+            'Timestamp', 'Reporter', 'CustomerId', 'CustomerName',
+            'OccurrenceTime', 'Location', 'AccidentContent',
+            'Situation', 'ImmediateResponse', 'ParentCorrespondence',
+            'DiagnosisTreatment', 'Prevention', 'OriginalInput'
+        ]);
+    }
+
+    const timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+
+    sheet.appendRow([
+        timestampJST,
+        reportData.staffName || "",
+        reportData.customerId || "",
+        reportData.customerName || "",
+        reportData.occurrenceTime,
+        reportData.location,
+        reportData.accidentContent,
+        reportData.situation,
+        reportData.immediateResponse,
+        reportData.parentCorrespondence,
+        reportData.diagnosisTreatment,
+        reportData.prevention,
+        reportData.inputText
     ]);
 
     return "Success";

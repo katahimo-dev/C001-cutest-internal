@@ -170,14 +170,21 @@
                         class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
                 </div>
 
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200">
+                    <button onclick="switchMode('daily')" id="tabDaily"
+                        class="flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors">保育日報</button>
+                    <button onclick="switchMode('accident')" id="tabAccident"
+                        class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors">事故報告</button>
+                </div>
+
                 <!-- Modal Body -->
                 <div class="p-4 overflow-y-auto flex-grow space-y-4">
-
-                    <!-- Time -->
+                    <!-- Time (Shared) -->
                     <div class="grid grid-cols-1 gap-4">
                         <!-- Start Time -->
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">開始時間</label>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">開始時間/発生時間</label>
                             <div class="flex items-center gap-2">
                                 <select id="startHour" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50"
                                     onchange="autoSetEndTime()">
@@ -195,7 +202,7 @@
                         </div>
 
                         <!-- End Time -->
-                        <div>
+                        <div id="endTimeContainer">
                             <label class="block text-xs font-medium text-gray-500 mb-1">終了時間</label>
                             <div class="flex items-center gap-2">
                                 <select id="endHour" class="flex-1 p-2 rounded-lg border border-gray-300 bg-gray-50">
@@ -215,7 +222,7 @@
                     <!-- Input -->
                     <div>
                         <div class="flex justify-between items-center mb-1">
-                            <label class="block text-xs font-medium text-gray-500">本日のメモ (音声入力などで入力)</label>
+                            <label class="block text-xs font-medium text-gray-500">メモ (音声入力などで入力)</label>
                             <button onclick="startVoiceInput()" id="micBtn"
                                 class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-md flex items-center gap-1 transition-colors">
                                 <span id="micIcon">🎤</span> <span>音声入力</span>
@@ -223,7 +230,7 @@
                         </div>
                         <textarea id="reportInput" rows="6"
                             class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"
-                            placeholder="訪問した際の状況や、サポート内容、会話などを自由に入力してください..."></textarea>
+                            placeholder="状況や内容を自由に入力してください..."></textarea>
 
                         <!-- Warnings Area -->
                         <div id="warningsArea"
@@ -238,7 +245,7 @@
                         <span>日報を作成する</span>
                     </button>
 
-                    <!-- Results -->
+                    <!-- Daily Report Results -->
                     <div id="resultArea" class="hidden space-y-4 pt-4 border-t">
                         <div class="space-y-1">
                             <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
@@ -264,7 +271,58 @@
                             <textarea id="customerResult" rows="10" oninput="updateCharCounts()"
                                 class="w-full p-3 bg-white rounded-lg text-sm leading-relaxed text-gray-900 border border-green-200 focus:ring-2 focus:ring-green-300 shadow-sm"></textarea>
                         </div>
+                    </div>
 
+                    <!-- Accident Report Results -->
+                    <div id="accidentResultArea" class="hidden space-y-4 pt-4 border-t">
+                        <h3 class="text-sm font-bold text-gray-800 border-b pb-2">事故報告書ドラフト</h3>
+
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">発生日時</label>
+                                <input type="text" id="accOccurrenceTime"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">発生場所</label>
+                                <input type="text" id="accLocation"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">事故内容</label>
+                                <input type="text" id="accContent"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">発生状況</label>
+                                <textarea id="accSituation" rows="3"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">発生時の対応</label>
+                                <textarea id="accResponse" rows="3"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">保護者への対応</label>
+                                <textarea id="accParentCorrespondence" rows="3"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">診断名および処置状況</label>
+                                <textarea id="accDiagnosis" rows="2"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500">今後の対応</label>
+                                <textarea id="accPrevention" rows="3"
+                                    class="w-full p-2 rounded border border-gray-300 text-sm"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Shared Save Button -->
+                    <div id="saveBtnContainer" class="hidden">
                         <button onclick="saveReport()" id="saveBtn"
                             class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transform transition-transform active:scale-95">
                             保存する
@@ -288,6 +346,8 @@
         let allCustomers = [];
         let currentCustomer = null;
         let currentStaffName = '';
+        let currentReportMode = 'daily'; // 'daily' or 'accident'
+
         const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
         const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
         const ENC_KEY = 123; // Simple key
@@ -297,6 +357,52 @@
             populateHours();
             checkLogin();
         };
+
+        function switchMode(mode) {
+            currentReportMode = mode;
+            const tabDaily = document.getElementById('tabDaily');
+            const tabAccident = document.getElementById('tabAccident');
+
+            // UI Toggle
+            if (mode === 'daily') {
+                tabDaily.className = "flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors";
+                tabAccident.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
+
+                document.getElementById('endTimeContainer').classList.remove('hidden');
+                document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
+
+                // Show/Hide results based on previous state
+                // Actually easier to just hide both results and require regeneration if context switched?
+                // Or just hide the irrelevant result container.
+                const hasDailyResult = document.getElementById('internalResult').value !== '';
+                if (hasDailyResult) {
+                    document.getElementById('resultArea').classList.remove('hidden');
+                    document.getElementById('saveBtnContainer').classList.remove('hidden');
+                } else {
+                    document.getElementById('resultArea').classList.add('hidden');
+                    document.getElementById('saveBtnContainer').classList.add('hidden');
+                }
+                document.getElementById('accidentResultArea').classList.add('hidden');
+
+            } else {
+                tabDaily.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
+                tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
+
+                document.getElementById('endTimeContainer').classList.add('hidden'); // Not strictly needed for accident occurrence
+                document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
+
+                document.getElementById('resultArea').classList.add('hidden');
+
+                const hasAccidentResult = document.getElementById('accOccurrenceTime').value !== '';
+                if (hasAccidentResult) {
+                    document.getElementById('accidentResultArea').classList.remove('hidden');
+                    document.getElementById('saveBtnContainer').classList.remove('hidden');
+                } else {
+                    document.getElementById('accidentResultArea').classList.add('hidden');
+                    document.getElementById('saveBtnContainer').classList.add('hidden');
+                }
+            }
+        }
 
         function checkLogin() {
             const savedName = localStorage.getItem(STAFF_CACHE_KEY);
@@ -309,6 +415,8 @@
                 document.getElementById('loginModal').classList.remove('hidden');
             }
         }
+
+        // ... existing login/logout ...
 
         function doLogin() {
             const email = document.getElementById('loginEmail').value;
@@ -362,14 +470,13 @@
             document.getElementById('endHour').value = "11";
         }
 
-        // Light encryption (XOR + Base64)
+        // ... encryption ...
         function encrypt(text) {
             try {
                 const chars = text.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY));
                 return btoa(unescape(encodeURIComponent(chars.join(''))));
             } catch (e) { console.error(e); return null; }
         }
-
         function decrypt(encoded) {
             try {
                 const chars = decodeURIComponent(escape(atob(encoded))).split('');
@@ -377,10 +484,8 @@
             } catch (e) { console.error(e); return null; }
         }
 
-        function reloadData(force) {
-            loadData(force);
-        }
-
+        // ... data loading ...
+        function reloadData(force) { loadData(force); }
         function loadData(force = false) {
             const container = document.getElementById('customerList');
             // Only show spinner if we don't have data or forcing
@@ -398,7 +503,6 @@
                     if (decrypted) {
                         try {
                             const data = JSON.parse(decrypted);
-                            console.log("Loaded from cache");
                             onDataLoaded(data, true);
                             if (refreshBtn) refreshBtn.classList.remove('animate-spin');
                             return;
@@ -408,7 +512,6 @@
             }
 
             google.script.run.withSuccessHandler((data) => {
-                // Save to cache
                 const json = JSON.stringify(data);
                 const encrypted = encrypt(json);
                 if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
@@ -424,18 +527,12 @@
 
         function onDataLoaded(data, fromCache) {
             allCustomers = data.customers;
-            // Clear and rebuild filter
             const select = document.getElementById('cityFilter');
             select.innerHTML = '<option value="">全ての地域</option>';
-
             populateCityFilter(data.cities);
             renderCustomers(allCustomers);
         }
-
-        function onError(e) {
-            showToast('Error: ' + e.message, true);
-        }
-
+        function onError(e) { showToast('Error: ' + e.message, true); }
         function populateCityFilter(cities) {
             const select = document.getElementById('cityFilter');
             cities.forEach(city => {
@@ -445,7 +542,6 @@
                 select.appendChild(option);
             });
         }
-
         function renderCustomers(customers) {
             const container = document.getElementById('customerList');
             container.innerHTML = '';
@@ -473,17 +569,14 @@
                 container.appendChild(el);
             });
         }
-
         function filterCustomers() {
             const city = document.getElementById('cityFilter').value;
             const search = document.getElementById('searchInput').value.toLowerCase();
-
             const filtered = allCustomers.filter(c => {
                 const matchesCity = city ? c.city === city : true;
                 const matchesSearch = c.name.toLowerCase().includes(search);
                 return matchesCity && matchesSearch;
             });
-
             renderCustomers(filtered);
         }
 
@@ -499,14 +592,28 @@
             // Reset form
             document.getElementById('startHour').value = "09";
             document.getElementById('startMinute').value = "00";
-            autoSetEndTime(); // Trigger calc
+            autoSetEndTime();
 
             document.getElementById('reportInput').value = '';
+
+            // Clear all results
+            document.getElementById('internalResult').value = '';
+            document.getElementById('customerResult').value = '';
+            document.getElementById('accOccurrenceTime').value = '';
+            document.getElementById('accLocation').value = '';
+            document.getElementById('accContent').value = '';
+            document.getElementById('accSituation').value = '';
+            document.getElementById('accResponse').value = '';
+            document.getElementById('accParentCorrespondence').value = '';
+            document.getElementById('accDiagnosis').value = '';
+            document.getElementById('accPrevention').value = '';
+
             document.getElementById('warningsArea').classList.add('hidden');
-            document.getElementById('resultArea').classList.add('hidden');
+
+            // Default to Daily
+            switchMode('daily');
 
             modal.classList.remove('hidden');
-            // Animation hack
             setTimeout(() => {
                 modal.classList.remove('opacity-0');
                 modalContent.classList.remove('translate-y-full');
@@ -525,13 +632,9 @@
         function autoSetEndTime() {
             const sH = parseInt(document.getElementById('startHour').value);
             const sM = document.getElementById('startMinute').value;
-
-            if (isNaN(sH)) return; // safety
-
-            // Add 2 hours
+            if (isNaN(sH)) return;
             let eH = sH + 2;
             if (eH >= 24) eH -= 24;
-
             const pad = (n) => n.toString().padStart(2, '0');
             document.getElementById('endHour').value = pad(eH);
             document.getElementById('endMinute').value = sM;
@@ -539,9 +642,7 @@
 
         function generateReport() {
             const input = document.getElementById('reportInput').value;
-
             const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
-            const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
 
             if (!input.trim()) {
                 showToast('メモを入力してください');
@@ -553,36 +654,46 @@
             btn.disabled = true;
             btn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div> 生成中...';
 
-            google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
-                showToast('Error: ' + e.message, true);
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }).generateReportWithWarnings({
-                text: input,
-                start: start,
-                end: end
-            });
+            if (currentReportMode === 'daily') {
+                const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+                google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
+                    showToast('Error: ' + e.message, true);
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }).generateReportWithWarnings({
+                    text: input,
+                    start: start,
+                    end: end
+                });
+            } else {
+                // Accident Mode
+                google.script.run.withSuccessHandler(onAccidentReportGenerated).withFailureHandler(e => {
+                    showToast('Error: ' + e.message, true);
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }).generateAccidentReport({
+                    text: input,
+                    start: start,
+                    end: "" // not used potentially
+                });
+            }
         }
 
         function onReportGenerated(result) {
             const btn = document.getElementById('generateBtn');
             btn.disabled = false;
-            btn.innerHTML = '<span>日報を作成する</span>'; // Reset
+            btn.innerHTML = '<span>日報を作成する</span>';
 
-            // Warnings
             const warningsArea = document.getElementById('warningsArea');
             if (result.warnings && result.warnings.length > 0) {
                 document.getElementById('warningsList').textContent = result.warnings.join(', ');
                 warningsArea.classList.remove('hidden');
-                // Scroll to Warnings
                 warningsArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
             } else {
                 warningsArea.classList.add('hidden');
-                // Scroll to Results
                 document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
 
-            // Append signature to customer report
             let customerText = result.customer;
             if (currentStaffName) {
                 const parts = currentStaffName.split(/[\s　]+/);
@@ -591,12 +702,37 @@
                 }
             }
 
-            // Results (Set value for textarea)
             document.getElementById('internalResult').value = result.internal;
             document.getElementById('customerResult').value = customerText;
             document.getElementById('resultArea').classList.remove('hidden');
+            document.getElementById('saveBtnContainer').classList.remove('hidden'); // Show shared save button
 
             updateCharCounts();
+        }
+
+        function onAccidentReportGenerated(result) {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = false;
+            btn.innerHTML = '<span>事故報告書を作成する</span>';
+
+            if (result.error) {
+                showToast(result.error, true);
+                return;
+            }
+
+            // Populate fields
+            document.getElementById('accOccurrenceTime').value = result.occurrenceTime || '';
+            document.getElementById('accLocation').value = result.location || '';
+            document.getElementById('accContent').value = result.accidentContent || '';
+            document.getElementById('accSituation').value = result.situation || '';
+            document.getElementById('accResponse').value = result.immediateResponse || '';
+            document.getElementById('accParentCorrespondence').value = result.parentCorrespondence || '';
+            document.getElementById('accDiagnosis').value = result.diagnosisTreatment || '';
+            document.getElementById('accPrevention').value = result.prevention || '';
+
+            document.getElementById('accidentResultArea').classList.remove('hidden');
+            document.getElementById('accidentResultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('saveBtnContainer').classList.remove('hidden');
         }
 
         function updateCharCounts() {
@@ -611,28 +747,49 @@
             btn.disabled = true;
             btn.textContent = '保存中...';
 
-            const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
-            const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+            if (currentReportMode === 'daily') {
+                const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+                const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
 
-            google.script.run.withSuccessHandler(() => {
-                showToast('保存しました');
-                closeModal();
-                btn.disabled = false;
-                btn.textContent = '保存する';
-            }).saveReport({
-                customerId: currentCustomer.id,
-                customerName: currentCustomer.name,
-                inputText: document.getElementById('reportInput').value,
-                start: start,
-                end: end,
-                internalText: document.getElementById('internalResult').value,
-                customerText: document.getElementById('customerResult').value,
-                staffName: currentStaffName // Send login staff name
-
-            });
+                google.script.run.withSuccessHandler(() => {
+                    showToast('保存しました');
+                    closeModal();
+                    btn.disabled = false;
+                    btn.textContent = '保存する';
+                }).saveReport({
+                    customerId: currentCustomer.id,
+                    customerName: currentCustomer.name,
+                    inputText: document.getElementById('reportInput').value,
+                    start: start,
+                    end: end,
+                    internalText: document.getElementById('internalResult').value,
+                    customerText: document.getElementById('customerResult').value,
+                    staffName: currentStaffName
+                });
+            } else {
+                // Save Accident
+                google.script.run.withSuccessHandler(() => {
+                    showToast('事故報告を保存しました');
+                    closeModal();
+                    btn.disabled = false;
+                    btn.textContent = '保存する';
+                }).saveAccidentReport({
+                    customerId: currentCustomer.id,
+                    customerName: currentCustomer.name,
+                    staffName: currentStaffName,
+                    inputText: document.getElementById('reportInput').value,
+                    occurrenceTime: document.getElementById('accOccurrenceTime').value,
+                    location: document.getElementById('accLocation').value,
+                    accidentContent: document.getElementById('accContent').value,
+                    situation: document.getElementById('accSituation').value,
+                    immediateResponse: document.getElementById('accResponse').value,
+                    parentCorrespondence: document.getElementById('accParentCorrespondence').value,
+                    diagnosisTreatment: document.getElementById('accDiagnosis').value,
+                    prevention: document.getElementById('accPrevention').value
+                });
+            }
         }
 
-        // Voice Input
         function startVoiceInput() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
