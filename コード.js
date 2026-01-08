@@ -13,7 +13,8 @@ const PROMPT_KEYS = {
     GENERATE_ACCIDENT: 'GenerateAccident',
     PLACEHOLDER_DAILY: 'PlaceholderDaily',
     PLACEHOLDER_ACCIDENT: 'PlaceholderAccident',
-    HINT_ACCIDENT: 'HintAccident'
+    HINT_ACCIDENT: 'HintAccident',
+    PLACEHOLDER_HIYARI: 'PlaceholderHiyari'
 };
 
 const DEFAULT_PROMPTS = {
@@ -121,7 +122,19 @@ const DEFAULT_PROMPTS = {
 ①原因分析（環境・人・手順の観点で）
 →②一次対策（急ぎの安全策）
 →③恒久対策（マニュアル改訂・研修など）
-を箇条書きで。`
+を箇条書きで。`,
+    [PROMPT_KEYS.PLACEHOLDER_HIYARI]: `■ヒヤリハットを記入するときの追加留意点
+①「もし○○していたら重大事故」まで想定して原因を書く
+例：「高さ60 cmの踏み台から足を滑らせたが、すぐ横に職員がいて転落を回避」
+②再発防止策を必ず具体化（配置変更、備品購入、声かけ方法など）
+ 
+■よくあるNG集
+ 
+NG例	修正方法
+主観的表現 「急に暴れ出した」	行動を具体的に「立ち上がって走り出した」
+「たぶん眠かった」	憶測を削除 or 根拠を追記「午睡前で目をこすっていたため眠気があった可能性」
+時刻抜け・曖昧な順序	タイムラインで整理し、時計を確認して都度メモ。
+再発防止策が抽象的 「注意する」	「○月○日までに踏み台に滑り止めテープを貼付、写真を共有」など行動・期限・担当を明示。`
 };
 
 function doGet() {
@@ -229,7 +242,7 @@ function getData() {
     // Unique cities for filter
     const cities = [...new Set(customers.map(c => c.city).filter(c => c))].sort();
 
-    return { cities, customers };
+    return { cities, customers, version: checkDataVersion() };
 }
 
 /**
@@ -406,7 +419,7 @@ function saveAccidentReport(reportData) {
             'Timestamp', 'Reporter', 'CustomerId', 'CustomerName',
             'OccurrenceTime', 'Location', 'AccidentContent',
             'Situation', 'ImmediateResponse', 'ParentCorrespondence',
-            'DiagnosisTreatment', 'Prevention', 'OriginalInput'
+            'DiagnosisTreatment', 'Prevention', 'OriginalInput', 'ReportType'
         ]);
     }
 
@@ -427,7 +440,8 @@ function saveAccidentReport(reportData) {
         reportData.parentCorrespondence,
         reportData.diagnosisTreatment,
         reportData.prevention,
-        reportData.inputText
+        reportData.inputText,
+        reportData.reportType || "事故報告" // Default to Accident if missing
     ]);
 
     return "Success";
@@ -436,20 +450,21 @@ function saveAccidentReport(reportData) {
 
 
 
-function verifyLogin(email, password) {
+
+function verifyLogin(userId, password) {
     try {
         const ss = SpreadsheetApp.openById(STAFF_SS_ID);
         const sheet = ss.getSheets().find(s => s.getSheetId() == STAFF_GID);
         if (!sheet) return { success: false, message: "Staff sheet not found" };
 
         const data = sheet.getDataRange().getValues().slice(1); // Skip header
-        // Col B(1): Name, E(4): Email, H(7): Password
-        const user = data.find(row => row[4] == email && row[7] == password);
+        // New Layout: Col A(0): Name, B(1): UserID, C(2): Password, D(3): Admin
+        const user = data.find(row => row[1] == userId && row[2] == password);
 
         if (user) {
-            return { success: true, name: user[1], isAdmin: (user[8] == 1) };
+            return { success: true, name: user[0], isAdmin: (user[3] == 1) };
         } else {
-            return { success: false, message: "Invalid email or password" };
+            return { success: false, message: "Invalid ID or password" };
         }
     } catch (e) {
         return { success: false, message: e.message };
@@ -598,7 +613,14 @@ function uploadCustomerCsv(csvContent) {
         if (fSheet.getLastRow() > 1) fSheet.getRange(2, 1, fSheet.getLastRow() - 1, fHeader.length).clearContent();
     }
 
+    // Update Data Version
+    PropertiesService.getScriptProperties().setProperty('DATA_VERSION', String(Date.now()));
+
     return "Upload Successful";
+}
+
+function checkDataVersion() {
+    return PropertiesService.getScriptProperties().getProperty('DATA_VERSION') || '0';
 }
 
 function getStaffList() {
@@ -610,7 +632,8 @@ function getStaffList() {
         const lastRow = sheet.getLastRow();
         if (lastRow < 2) return [];
 
-        const values = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+        // Name is in Col A (index 0 for getValues, but getRange is 1-based, so Column 1)
+        const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
         const staff = values.flat().filter(name => name && String(name).trim() !== "");
         return [...new Set(staff)];
     } catch (e) {
@@ -625,6 +648,7 @@ function getUiConfig() {
     return {
         dailyPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_DAILY),
         accidentPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_ACCIDENT),
-        accidentHint: getPrompt(PROMPT_KEYS.HINT_ACCIDENT)
+        accidentHint: getPrompt(PROMPT_KEYS.HINT_ACCIDENT),
+        hiyariPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_HIYARI)
     };
 }

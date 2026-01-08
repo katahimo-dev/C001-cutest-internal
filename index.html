@@ -67,10 +67,10 @@
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
-                        <input type="email" id="loginEmail"
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ユーザーID</label>
+                        <input type="text" id="loginEmail"
                             class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500"
-                            placeholder="ex: staff@example.com">
+                            placeholder="ex: nakahara">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
@@ -195,10 +195,15 @@
                         class="w-full p-2 text-sm border-gray-300 rounded mb-2">
                         <option value="">(選択してください)</option>
                     </select>
-                    <div id="familyInfoBox"
-                        class="hidden text-xs text-gray-700 bg-white p-2 rounded border border-blue-100 mb-2">
-                        <p><span class="font-bold">アレルギー:</span> <span id="familyAllergy"></span></p>
-                        <p><span class="font-bold">特記事項:</span> <span id="familyInfo"></span></p>
+                    <div id="familyInfoBox" class="hidden mb-2 flex items-stretch gap-2">
+                        <div id="allergyContainer" class="hidden flex-1 min-w-0">
+                            <p id="familyAllergy"
+                                class="h-full flex items-center justify-center text-red-600 font-bold text-base bg-red-50 p-2 rounded-lg border border-red-100 shadow-sm text-center break-words">
+                            </p>
+                        </div>
+                        <p id="familyInfo"
+                            class="hidden flex-1 min-w-0 text-xs text-gray-700 bg-yellow-50 p-2 rounded border border-yellow-100 break-words flex items-center">
+                        </p>
                     </div>
                 </div>
 
@@ -245,6 +250,24 @@
 
                     <!-- Input -->
                     <div>
+                        <!-- Incident Type Selector -->
+                        <div id="accidentTypeSelector" class="hidden mb-2">
+                            <div class="flex gap-4 p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="accType" value="事故報告" checked
+                                        onchange="updateAccidentPlaceholder()"
+                                        class="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300">
+                                    <span class="text-sm font-bold text-gray-700">事故報告</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="accType" value="ヒヤリハット"
+                                        onchange="updateAccidentPlaceholder()"
+                                        class="w-4 h-4 text-orange-500 focus:ring-orange-400 border-gray-300">
+                                    <span class="text-sm font-bold text-gray-700">ヒヤリハット</span>
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="flex justify-between items-center mb-1">
                             <label class="block text-xs font-medium text-gray-500">メモ (音声入力などで入力)</label>
                             <div class="flex gap-2">
@@ -261,6 +284,7 @@
                         <textarea id="reportInput" rows="6"
                             class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"
                             placeholder="状況や内容を自由に入力してください..."></textarea>
+
 
                         <!-- Warnings Area -->
                         <div id="warningsArea"
@@ -413,17 +437,11 @@
             <div class="space-y-3">
                 <label class="block text-sm font-medium text-gray-700">顧客データ一括更新 (CSV)</label>
 
-                <div class="flex items-center gap-2 mb-2">
-                    <label class="text-xs text-gray-500">文字コード:</label>
-                    <select id="csvEncoding" class="text-sm border border-gray-300 rounded p-1">
-                        <option value="UTF-8">UTF-8</option>
-                        <option value="Shift_JIS" selected>Shift_JIS (Excel等)</option>
-                    </select>
-                </div>
+
 
                 <input type="file" id="csvFile" accept=".csv"
                     class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                <p class="text-xs text-gray-400">※Shift-JISまたはUTF-8。顧客IDをキーに更新します。</p>
+                <p class="text-xs text-gray-400">※UTF-8のみ対応。顧客IDをキーに更新します。</p>
             </div>
 
             <div class="pt-4 flex gap-3">
@@ -442,7 +460,9 @@
         let currentReportMode = 'daily'; // 'daily' or 'accident'
         let uiConfig = {};
 
-        const CACHE_KEY = 'GAS_CUSTOMER_DATA_V1';
+        let localDataVersion = '0';
+
+        const CACHE_KEY = 'GAS_CUSTOMER_DATA_V2';
         const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
         const STAFF_ADMIN_KEY = 'GAS_STAFF_ADMIN';
         const ENC_KEY = 123; // Simple key
@@ -452,7 +472,25 @@
             populateHours();
             checkLogin();
             loadUiConfig();
+            startVersionPolling();
         };
+
+        function startVersionPolling() {
+            checkForUpdates(); // Check immediately on load
+            setInterval(checkForUpdates, 60000); // Check every minute
+        }
+
+        function checkForUpdates() {
+            // Check current version from server
+
+            google.script.run.withSuccessHandler(serverVersion => {
+                if (serverVersion && serverVersion !== localDataVersion) {
+                    console.log("New data detected:", serverVersion);
+                    showToast("新しいデータが見つかりました。更新しています...", false);
+                    reloadData(true);
+                }
+            }).checkDataVersion();
+        }
 
         // ... loadUiConfig ...
         // ... switchMode ...
@@ -493,6 +531,7 @@
             const tabAccident = document.getElementById('tabAccident');
             const hintBtn = document.getElementById('hintBtn');
             const input = document.getElementById('reportInput');
+            const typeSelector = document.getElementById('accidentTypeSelector');
 
             // UI Toggle
             if (mode === 'daily') {
@@ -503,6 +542,8 @@
                 document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
 
                 hintBtn.classList.add('hidden');
+                typeSelector.classList.add('hidden');
+
                 input.placeholder = uiConfig.dailyPlaceholder || "状況や内容を自由に入力してください...";
 
                 // Show/Hide results based on previous state
@@ -524,7 +565,10 @@
                 document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
 
                 hintBtn.classList.remove('hidden');
-                input.placeholder = uiConfig.accidentPlaceholder || "事故の状況を詳しく入力してください...";
+                typeSelector.classList.remove('hidden');
+
+                // Update Placeholder based on selection
+                updateAccidentPlaceholder();
 
                 document.getElementById('resultArea').classList.add('hidden');
 
@@ -536,6 +580,18 @@
                     document.getElementById('accidentResultArea').classList.add('hidden');
                     document.getElementById('saveBtnContainer').classList.add('hidden');
                 }
+            }
+        }
+
+        function updateAccidentPlaceholder() {
+            if (currentReportMode !== 'accident') return;
+            const type = document.querySelector('input[name="accType"]:checked').value;
+            const input = document.getElementById('reportInput');
+
+            if (type === 'ヒヤリハット') {
+                input.placeholder = uiConfig.hiyariPlaceholder || "ヒヤリハットの状況を入力してください...";
+            } else {
+                input.placeholder = uiConfig.accidentPlaceholder || "事故の状況を詳しく入力してください...";
             }
         }
 
@@ -638,8 +694,7 @@
                     btn.textContent = "アップロード";
                 }).uploadCustomerCsv(content);
             };
-            const encoding = document.getElementById('csvEncoding').value;
-            reader.readAsText(file, encoding);
+            reader.readAsText(file, 'UTF-8');
         }
 
         function populateHours() {
@@ -718,6 +773,9 @@
 
         function onDataLoaded(data, fromCache) {
             allCustomers = data.customers;
+            if (data.version) {
+                localDataVersion = data.version;
+            }
             const select = document.getElementById('cityFilter');
             select.innerHTML = '<option value="">全ての地域</option>';
             populateCityFilter(data.cities);
@@ -775,6 +833,34 @@
         const modal = document.getElementById('reportModal');
         const modalContent = modal.querySelector('div');
 
+        function calculateAge(dobStr) {
+            // "yyyy/MM/dd"
+            if (!dobStr) return "";
+            const parts = dobStr.split('/');
+            if (parts.length !== 3) return "";
+
+            const birthDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            const today = new Date();
+
+            let years = today.getFullYear() - birthDate.getFullYear();
+            let months = today.getMonth() - birthDate.getMonth();
+
+            if (today.getDate() < birthDate.getDate()) {
+                months--;
+            }
+            if (months < 0) {
+                years--;
+                months += 12;
+            }
+
+            // To half-width digits
+            const toFullWidth = (n) => String(n).replace(/[0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + 0xFEE0));
+            // User example shows Full Width numbers: "０歳３か月"
+            // Wait, standard JP usage often uses half-width but user requested "０歳３か月".
+            // I will use full-width for numbers to match request.
+            return `（${toFullWidth(years)}歳${toFullWidth(months)}か月）`;
+        }
+
         function openModal(customer) {
             currentCustomer = customer;
             document.getElementById('modalCustomerName').textContent = customer.name;
@@ -786,8 +872,9 @@
             if (customer.family && customer.family.length > 0) {
                 customer.family.forEach((fam, idx) => {
                     const opt = document.createElement('option');
-                    opt.value = idx; // Use index to retrieve data
-                    opt.textContent = fam.name;
+                    opt.value = idx;
+                    const ageStr = calculateAge(fam.dob);
+                    opt.textContent = fam.name + ' ' + ageStr;
                     famSelect.appendChild(opt);
                 });
             }
@@ -830,9 +917,12 @@
             }, 10);
         }
 
+
         function onFamilySelect() {
             const idx = document.getElementById('familySelector').value;
             const infoBox = document.getElementById('familyInfoBox');
+            const allergyContainer = document.getElementById('allergyContainer');
+            const familyInfo = document.getElementById('familyInfo');
 
             if (idx === "") {
                 infoBox.classList.add('hidden');
@@ -843,9 +933,33 @@
 
             const fam = currentCustomer.family[idx];
             if (fam) {
-                document.getElementById('familyAllergy').textContent = fam.allergy || 'なし';
-                document.getElementById('familyInfo').textContent = fam.info || 'なし';
-                infoBox.classList.remove('hidden');
+                // Allergy
+                if (fam.allergy && fam.allergy.trim() !== "" && fam.allergy !== "なし") {
+                    document.getElementById('familyAllergy').textContent = fam.allergy;
+                    allergyContainer.classList.remove('hidden');
+                } else {
+                    allergyContainer.classList.add('hidden');
+                }
+
+                // Info
+                if (fam.info && fam.info.trim() !== "" && fam.info !== "なし") {
+                    familyInfo.textContent = fam.info;
+                    familyInfo.classList.remove('hidden');
+                } else {
+                    familyInfo.classList.add('hidden');
+                }
+
+                // If either is visible, show box (actually box acts as container, so always show if fam selected? or only if content?)
+                // User said: "infoが空白の場合には、表示しない" (If info is blank, do not display [it]).
+                // If both blank, maybe hide box?
+                const hasAllergy = !allergyContainer.classList.contains('hidden');
+                const hasInfo = !familyInfo.classList.contains('hidden');
+
+                if (hasAllergy || hasInfo) {
+                    infoBox.classList.remove('hidden');
+                } else {
+                    infoBox.classList.add('hidden');
+                }
 
                 // Auto-fill Accident fields
                 document.getElementById('accTargetName').value = fam.name;
@@ -1001,8 +1115,10 @@
                 });
             } else {
                 // Save Accident
+                const reportType = document.querySelector('input[name="accType"]:checked').value;
+
                 google.script.run.withSuccessHandler(() => {
-                    showToast('事故報告を保存しました');
+                    showToast(reportType + 'を保存しました');
                     closeModal();
                     btn.disabled = false;
                     btn.textContent = '保存する';
@@ -1020,7 +1136,8 @@
                     immediateResponse: document.getElementById('accResponse').value,
                     parentCorrespondence: document.getElementById('accParentCorrespondence').value,
                     diagnosisTreatment: document.getElementById('accDiagnosis').value,
-                    prevention: document.getElementById('accPrevention').value
+                    prevention: document.getElementById('accPrevention').value,
+                    reportType: reportType
                 });
             }
         }
