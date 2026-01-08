@@ -286,14 +286,9 @@ function getPrompt(key) {
  * Generates report and returns warnings if info is missing.
  */
 // Refactored helper to support multimodal or text-only
-function callGemini(apiKey, contentParts, generationConfig) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    // Using 2.0-flash-exp or 1.5-flash for better vision support if 2.5 is not stable yet. 
-    // User's previous code had 2.5-flash. Assuming it works or falling back to 1.5-flash which is standard for multimodal.
-    // Let's stick to the user's previous model ID if it was working, or use 1.5-flash for safety with images.
-    // Actually, gemini-1.5-flash is the standard for cost-effective multimodal. 
-    // Previous code: gemini-2.5-flash (might be a typo by me or user previously? usually it's 1.5-flash or 2.0-flash-exp).
-    // I will use gemini-1.5-flash which is reliable for OCR.
+function callGemini(apiKey, contentParts, generationConfig, modelName) {
+    const model = modelName || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const payload = {
         contents: [{ parts: contentParts }],
@@ -375,10 +370,11 @@ function extractAmountFromImage(base64Image) {
     // Removing header "data:image/jpeg;base64,"
     const rawBase64 = base64Image.split(',')[1];
 
+    // OCR uses gemini-2.5-flash-lite as requested
     const result = callGemini(apiKey, [
         { text: prompt },
         { inline_data: { mime_type: "image/jpeg", data: rawBase64 } }
-    ]);
+    ], null, 'gemini-2.5-flash-lite');
 
     if (result.error) {
         console.error(result.error);
@@ -512,7 +508,27 @@ function generateAccidentReport(inputData) {
     let prompt = promptTemplate.replace('{anonymizedText}', text);
     prompt = prompt.replace('{timeInfo}', timeInfo);
 
-    const result = callGemini(apiKey, [{ text: prompt }]);
+    // Schema for Accident Report
+    const accidentSchema = {
+        type: "OBJECT",
+        properties: {
+            occurrenceTime: { type: "STRING" },
+            location: { type: "STRING" },
+            accidentContent: { type: "STRING" },
+            situation: { type: "STRING" },
+            immediateResponse: { type: "STRING" },
+            parentCorrespondence: { type: "STRING" },
+            diagnosisTreatment: { type: "STRING" },
+            prevention: { type: "STRING" }
+        },
+        required: ["occurrenceTime", "location", "accidentContent", "situation", "immediateResponse", "parentCorrespondence", "diagnosisTreatment", "prevention"]
+    };
+
+    const result = callGemini(apiKey, [{ text: prompt }], {
+        responseMimeType: "application/json",
+        responseSchema: accidentSchema
+    });
+
     if (result.error) {
         return { error: result.error };
     }
