@@ -291,6 +291,32 @@
                             class="hidden mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
                             <strong>⚠️ 情報不足:</strong> <span id="warningsList"></span>
                         </div>
+
+                        <!-- Image Upload Section -->
+                        <div id="imageUploadSection" class="mt-4 border-t pt-3">
+                            <label class="block text-xs font-medium text-gray-500 mb-2">領収書・添付画像 (最大6枚)</label>
+                            <div class="flex flex-wrap gap-2 items-start">
+                                <!-- Previews -->
+                                <div id="imagePreviewContainer" class="flex flex-wrap gap-2">
+                                    <!-- Populated by JS -->
+                                </div>
+
+                                <!-- Add Button -->
+                                <button onclick="triggerCamera()" id="addPhotoBtn"
+                                    class="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:text-blue-500 hover:border-blue-500 transition-colors bg-gray-50">
+                                    <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
+                                        </path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    <span class="text-[10px] font-bold">撮影/追加</span>
+                                </button>
+                            </div>
+                            <input type="file" id="fileInput" accept="image/*" multiple class="hidden"
+                                onchange="handleFileSelect(this)">
+                        </div>
                     </div>
 
                     <!-- Action -->
@@ -532,6 +558,7 @@
             const hintBtn = document.getElementById('hintBtn');
             const input = document.getElementById('reportInput');
             const typeSelector = document.getElementById('accidentTypeSelector');
+            const imageSection = document.getElementById('imageUploadSection');
 
             // UI Toggle
             if (mode === 'daily') {
@@ -543,6 +570,8 @@
 
                 hintBtn.classList.add('hidden');
                 typeSelector.classList.add('hidden');
+
+                if (imageSection) imageSection.classList.remove('hidden');
 
                 input.placeholder = uiConfig.dailyPlaceholder || "状況や内容を自由に入力してください...";
 
@@ -566,6 +595,8 @@
 
                 hintBtn.classList.remove('hidden');
                 typeSelector.classList.remove('hidden');
+
+                if (imageSection) imageSection.classList.add('hidden');
 
                 // Update Placeholder based on selection
                 updateAccidentPlaceholder();
@@ -1098,9 +1129,14 @@
                 const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
                 const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
 
-                google.script.run.withSuccessHandler(() => {
-                    showToast('保存しました');
-                    closeModal();
+                google.script.run.withSuccessHandler((res) => {
+                    const msg = (res && res.message) ? res.message : '保存しました';
+                    const isWarning = (res && res.message && res.message.includes('失敗'));
+                    showToast(msg, isWarning);
+
+                    if (!isWarning) {
+                        closeModal();
+                    }
                     btn.disabled = false;
                     btn.textContent = '保存する';
                 }).saveReport({
@@ -1111,7 +1147,8 @@
                     end: end,
                     internalText: document.getElementById('internalResult').value,
                     customerText: document.getElementById('customerResult').value,
-                    staffName: currentStaffName
+                    staffName: currentStaffName,
+                    images: currentImages // Add images
                 });
             } else {
                 // Save Accident
@@ -1225,6 +1262,160 @@
                 toast.classList.add('opacity-0');
             }, 3000);
         }
+        // Image Handling
+        let currentImages = []; // Array of { data: base64, amount: number|string, loading: boolean }
+
+        function triggerCamera() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileSelect(input) {
+            const files = Array.from(input.files);
+            if (files.length === 0) return;
+
+            // Check limit
+            if (currentImages.length + files.length > 6) {
+                showToast('画像は最大6枚までです', true);
+                input.value = '';
+                return;
+            }
+
+            let processedCount = 0;
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    resizeAndAddImage(e.target.result, () => {
+                        processedCount++;
+                        if (processedCount === files.length) {
+                            input.value = ''; // Reset
+                        }
+                    });
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function resizeAndAddImage(base64Str, callback) {
+            const img = new Image();
+            img.onload = function () {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200;
+                const MAX_HEIGHT = 1200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Compress to JPEG 0.7
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+                // Add to list with empty amount and loading state
+                const newIdx = currentImages.length;
+                currentImages.push({ data: dataUrl, amount: '', loading: true });
+                renderImagePreviews();
+
+                // Trigger OCR
+                runOcr(newIdx, dataUrl);
+
+                if (callback) callback();
+            };
+            img.src = base64Str;
+        }
+
+        function runOcr(index, base64Data) {
+            google.script.run.withSuccessHandler(res => {
+                if (currentImages[index]) {
+                    currentImages[index].loading = false;
+                    if (res.amount) {
+                        currentImages[index].amount = res.amount;
+                    }
+                    renderImagePreviews();
+                }
+            }).withFailureHandler(e => {
+                console.error("OCR Failed", e);
+                if (currentImages[index]) {
+                    currentImages[index].loading = false;
+                    renderImagePreviews();
+                }
+            }).extractAmountFromImage(base64Data);
+        }
+
+        function renderImagePreviews() {
+            const container = document.getElementById('imagePreviewContainer');
+            container.innerHTML = '';
+
+            currentImages.forEach((imgObj, idx) => {
+                const div = document.createElement('div');
+                div.className = 'relative w-28 flex flex-col gap-1 items-center'; // increased width
+
+                // Image Container
+                const imgDiv = document.createElement('div');
+                imgDiv.className = 'relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-200 group bg-gray-100';
+
+                imgDiv.innerHTML = `
+                    <img src="${imgObj.data}" class="w-full h-full object-cover">
+                    <button onclick="removeImage(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 hover:opacity-100 shadow-md z-10">
+                        &times;
+                    </button>
+                    ${imgObj.loading ? '<div class="absolute inset-0 bg-black/30 flex items-center justify-center"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div></div>' : ''}
+                `;
+
+                // Wrapper for input with "円" label ? Or just placeholder
+                const inputContainer = document.createElement('div');
+                inputContainer.className = "w-full px-1";
+                // Using oninput to update model
+                inputContainer.innerHTML = `
+                    <input type="number" 
+                        value="${imgObj.amount}" 
+                        placeholder="金額" 
+                        oninput="currentImages[${idx}].amount = this.value"
+                        class="w-full p-1 text-sm border border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500"
+                    >
+                `;
+
+                div.appendChild(imgDiv);
+                div.appendChild(inputContainer);
+                container.appendChild(div);
+            });
+
+            // Toggle Add Button Visibility
+            const btn = document.getElementById('addPhotoBtn');
+            if (currentImages.length >= 6) {
+                btn.classList.add('hidden');
+            } else {
+                btn.classList.remove('hidden');
+            }
+        }
+
+        function removeImage(index) {
+            currentImages.splice(index, 1);
+            // Re-render will fix indices in handlers because it loops generic idx
+            renderImagePreviews();
+        }
+
+        // Also reset images when opening modal
+        const originalOpenModal = openModal;
+        openModal = function (customer) {
+            originalOpenModal(customer);
+            currentImages = []; // Reset
+            renderImagePreviews();
+        };
+
     </script>
 </body>
 

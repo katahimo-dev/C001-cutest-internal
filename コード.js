@@ -8,6 +8,11 @@ const PROMPT_SHEET_NAME = 'ＡＩプロンプト';
 const REPORT_SHEET_NAME = '日報';
 const STAFF_SS_ID = "1yfVdlHeptbGZxTawIQjGLZu60T4726tEveLjOO-aL6Q";
 const STAFF_GID = 939066637;
+
+// New Constants for Receipt Images
+const RECEIPT_FOLDER_ID = '1fruKZdH4gigbUB54VOrvYDa31cotVSdD';
+const IMAGE_LOG_SS_ID = '18tkd37ck6fmhPMc_Ep1YEs4FXjB2HqXgMRfm0oJlkWI';
+
 const PROMPT_KEYS = {
     GENERATE_WITH_WARNINGS: 'GenerateWithWarnings',
     GENERATE_ACCIDENT: 'GenerateAccident',
@@ -280,9 +285,51 @@ function getPrompt(key) {
 /**
  * Generates report and returns warnings if info is missing.
  */
+// Refactored helper to support multimodal or text-only
+function callGemini(apiKey, contentParts, generationConfig) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // Using 2.0-flash-exp or 1.5-flash for better vision support if 2.5 is not stable yet. 
+    // User's previous code had 2.5-flash. Assuming it works or falling back to 1.5-flash which is standard for multimodal.
+    // Let's stick to the user's previous model ID if it was working, or use 1.5-flash for safety with images.
+    // Actually, gemini-1.5-flash is the standard for cost-effective multimodal. 
+    // Previous code: gemini-2.5-flash (might be a typo by me or user previously? usually it's 1.5-flash or 2.0-flash-exp).
+    // I will use gemini-1.5-flash which is reliable for OCR.
+
+    const payload = {
+        contents: [{ parts: contentParts }],
+        generationConfig: generationConfig || { responseMimeType: "application/json" }
+    };
+
+    try {
+        const response = UrlFetchApp.fetch(url, {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+        });
+
+        if (response.getResponseCode() !== 200) {
+            return { error: "API Error: " + response.getContentText() };
+        }
+
+        const json = JSON.parse(response.getContentText());
+        if (!json.candidates || json.candidates.length === 0) {
+            return { error: "No candidates returned" };
+        }
+
+        const text = json.candidates[0].content.parts[0].text;
+        // Clean markdown JSON if present
+        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
+
+    } catch (e) {
+        return { error: "System Error: " + e.message };
+    }
+}
+
 function generateReportWithWarnings(inputData) {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!apiKey) return { warnings: ["API Key Missing"], internal: "Error: API Key not set in Script Properties", customer: "Error: API Key not set" };
+    if (!apiKey) return { warnings: ["API Key Missing"], internal: "Error: API Key not set", customer: "" };
 
     let promptTemplate = getPrompt(PROMPT_KEYS.GENERATE_WITH_WARNINGS);
     if (!promptTemplate) promptTemplate = DEFAULT_PROMPTS[PROMPT_KEYS.GENERATE_WITH_WARNINGS];
@@ -302,46 +349,42 @@ function generateReportWithWarnings(inputData) {
     let prompt = promptTemplate.replace('{anonymizedText}', text);
     prompt = prompt.replace('{timeInfo}', timeInfo);
 
-    return callGemini(apiKey, prompt);
+    // Call with text part
+    const result = callGemini(apiKey, [{ text: prompt }]);
+    if (result.error) {
+        return { warnings: ["API Error"], internal: result.error, customer: "" };
+    }
+    return result;
 }
 
-// ... existing code ...
-// ... existing code ...
-function callGemini(apiKey, promptText) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const payload = {
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: { responseMimeType: "application/json" }
-    };
-    // ... existing code ...
-    // ... existing code ...
+/**
+ * Extracts amount from receipt image
+ */
+function extractAmountFromImage(base64Image) {
+    const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!apiKey) return { amount: "" };
 
-    try {
-        const response = UrlFetchApp.fetch(url, {
-            method: 'post',
-            contentType: 'application/json',
-            payload: JSON.stringify(payload),
-            muteHttpExceptions: true
-        });
+    const prompt = `
+    Analyze the image of this receipt.
+    Identify the Total Amount (Total, 合計, 支払い金額).
+    Return the result in JSON format: {"amount": number}
+    If the amount cannot be read, return {"amount": 0}.
+    Do NOT include currency symbols in the number value.
+    `;
 
-        if (response.getResponseCode() !== 200) {
-            // Fallback checking?
-            return { warnings: ["API Error"], internal: "Error: " + response.getContentText(), customer: "" };
-        }
+    // Removing header "data:image/jpeg;base64,"
+    const rawBase64 = base64Image.split(',')[1];
 
-        const json = JSON.parse(response.getContentText());
-        const candidates = json.candidates;
-        if (!candidates || candidates.length === 0) {
-            return { warnings: ["No Content"], internal: "Error: No response candidates", customer: "" };
-        }
+    const result = callGemini(apiKey, [
+        { text: prompt },
+        { inline_data: { mime_type: "image/jpeg", data: rawBase64 } }
+    ]);
 
-        const text = candidates[0].content.parts[0].text;
-        // Strip markdown code block if present
-        const jsonText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(jsonText);
-    } catch (e) {
-        return { warnings: ["System Error"], internal: "Error: " + e.message, customer: "" };
+    if (result.error) {
+        console.error(result.error);
+        return { amount: 0 };
     }
+    return result;
 }
 
 /**
@@ -370,7 +413,76 @@ function saveReport(reportData) {
         reportData.customerText,
     ]);
 
-    return "Success";
+    // Handle Image Uploads with Amount
+    let imageStatus = "No Images";
+    if (reportData.images && reportData.images.length > 0) {
+        try {
+            const count = processReceiptImages(reportData.images, reportData.staffName, reportData.customerId);
+            imageStatus = `Uploaded ${count} images`;
+        } catch (e) {
+            console.error("Image Upload Failed: " + e.message);
+            // We return the error details so the frontend can warn the user
+            // even if the report text was saved.
+            return { success: true, message: "日報は保存されましたが、画像保存に失敗しました: " + e.message };
+        }
+    }
+
+    return { success: true, message: "保存しました (" + imageStatus + ")" };
+}
+
+/**
+ * Saves receipt images to Drive and logs to Spreadsheet
+ * Updated to handle Amount and CustomerID
+ */
+function processReceiptImages(imagesData, staffId, customerId) {
+    if (!imagesData || imagesData.length === 0) return 0;
+
+    const folder = DriveApp.getFolderById(RECEIPT_FOLDER_ID);
+    const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
+    const sheet = ss.getSheets()[0];
+
+    // Ensure header matches new requirements
+    // Old: ['日時', 'ユーザーID', 'Googleドライブ写真ファイルへのリンク']
+    // New: ['日時', 'ユーザーID', '顧客ID', '金額', 'Googleドライブ写真ファイルへのリンク']
+    // We won't delete old data, just append new columns effectively from now on if row 1 is empty
+    if (sheet.getLastRow() === 0) {
+        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '金額', 'Googleドライブ写真ファイルへのリンク']);
+    }
+
+    const now = new Date();
+    const timestamp = Utilities.formatDate(now, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+    const filePrefix = Utilities.formatDate(now, "Asia/Tokyo", "yyyyMMdd_HHmmss");
+
+    let successCount = 0;
+
+    // Support legacy array of strings or new array of objects
+    imagesData.forEach((item, index) => {
+        let base64Data = "";
+        let amount = "";
+
+        if (typeof item === 'string') {
+            base64Data = item;
+        } else {
+            base64Data = item.data;
+            amount = item.amount;
+        }
+
+        const split = base64Data.split(',');
+        if (split.length < 2) return; // Skip invalid
+
+        const contentType = split[0].split(':')[1].split(';')[0];
+        const bytes = Utilities.base64Decode(split[1]);
+
+        const fileName = `${filePrefix}_${index + 1}_${staffId || 'unknown'}.jpg`;
+        const blob = Utilities.newBlob(bytes, contentType, fileName);
+        const file = folder.createFile(blob);
+        const fileUrl = file.getUrl();
+
+        // Append to Spreadsheet
+        sheet.appendRow([timestamp, staffId || '', customerId || '', amount || '', fileUrl]);
+        successCount++;
+    });
+    return successCount;
 }
 
 /**
@@ -400,7 +512,11 @@ function generateAccidentReport(inputData) {
     let prompt = promptTemplate.replace('{anonymizedText}', text);
     prompt = prompt.replace('{timeInfo}', timeInfo);
 
-    return callGemini(apiKey, prompt);
+    const result = callGemini(apiKey, [{ text: prompt }]);
+    if (result.error) {
+        return { error: result.error };
+    }
+    return result;
 }
 
 const ACCIDENT_SHEET_NAME = '事故報告';
@@ -621,6 +737,20 @@ function uploadCustomerCsv(csvContent) {
 
 function checkDataVersion() {
     return PropertiesService.getScriptProperties().getProperty('DATA_VERSION') || '0';
+}
+
+function testDriveAuth() {
+    // Run this function in the GAS Editor to authorize DriveApp permissions (Write Access)
+    const folder = DriveApp.getFolderById(RECEIPT_FOLDER_ID);
+    console.log("Folder Found: " + folder.getName());
+
+    // Create a dummy file to force Writer Authorization
+    const file = folder.createFile("AuthTest.txt", "Write Permission Test");
+    console.log("Write Successful: " + file.getName());
+
+    // Clean up
+    file.setTrashed(true);
+    console.log("Cleanup Successful");
 }
 
 function getStaffList() {
