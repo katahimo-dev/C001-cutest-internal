@@ -1187,7 +1187,8 @@ function getCustomerReports(customerId) {
             original: row[14],
             internal: internalText,
             customer: row[11], // Parent Correspondence
-            isAccident: true
+            isAccident: true,
+            subtype: row[15] || '事故報告'
         };
     });
 

@@ -781,10 +781,16 @@
                         </p>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button onclick="event.stopPropagation(); showCustomerDetail('${c.id}')" 
-                            class="px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors z-10 relative">
-                            顧客情報
-                        </button>
+                        <div class="flex flex-col gap-2 items-end z-10 relative">
+                            <button onclick="event.stopPropagation(); showCustomerDetail('${c.id}')" 
+                                class="px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
+                                顧客情報
+                            </button>
+                            <button onclick="event.stopPropagation(); showCustomerHistory('${c.id}')" 
+                                class="px-3 py-1.5 text-xs font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-colors">
+                                活動記録
+                            </button>
+                        </div>
                         <div class="text-blue-500">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                         </div>
@@ -964,15 +970,33 @@
 
             reports.forEach((r, idx) => {
                 const isAccident = r.type === 'accident';
+
+                let title = '保育日報';
+                let colorClass = 'bg-blue-500';
+
+                if (isAccident) {
+                    title = r.subtype || '事故報告';
+                    if (title.includes('ヒヤリ')) {
+                        colorClass = 'bg-orange-400';
+                    } else {
+                        colorClass = 'bg-red-500';
+                    }
+                }
+
                 const dateStr = r.timestamp.split(' ')[0];
                 const timeStr = r.timestamp.split(' ')[1] || '';
-                const title = isAccident ? '事故報告' : '保育日報';
-                const colorClass = isAccident ? 'bg-red-500' : 'bg-blue-500';
-                // Unique IDs for toggling
                 const uid = `rep-${idx}`;
 
-                // Default tab
-                const defaultInternal = r.internal ? 'internal' : (r.original ? 'original' : 'customer');
+                // Tabs Buttons
+                let tabsHtml = `
+                    <button onclick="switchReportTab('${uid}', 'original')" id="btn-${uid}-original" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">原本</button>
+                    <button onclick="switchReportTab('${uid}', 'internal')" id="btn-${uid}-internal" class="px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600">社内向け</button>
+                `;
+
+                // Add Customer Tab only for non-accidents
+                if (!isAccident) {
+                    tabsHtml += `<button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>`;
+                }
 
                 html += `
                     <div class="relative pl-6 pb-6 group transition-all duration-300 hover:pl-7">
@@ -996,9 +1020,7 @@
 
                             <!-- Controls (Tabs) -->
                             <div class="flex space-x-1 mb-2 border-b border-gray-200 text-xs">
-                                <button onclick="switchReportTab('${uid}', 'original')" id="btn-${uid}-original" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">原本</button>
-                                <button onclick="switchReportTab('${uid}', 'internal')" id="btn-${uid}-internal" class="px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600">社内向け</button>
-                                <button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>
+                                ${tabsHtml}
                             </div>
 
                             <!-- Content Areas -->
@@ -1013,6 +1035,25 @@
             });
 
             timeline.innerHTML = html;
+        }
+
+        // --- History Modal Functions ---
+        function showCustomerHistory(id) {
+            const modal = document.getElementById('customerHistoryModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            /* Reset visual state */
+            const inner = modal.querySelector('div');
+            inner.classList.remove('scale-95');
+            inner.classList.add('transition-all');
+
+            loadCustomerHistory(id);
+        }
+
+        function closeCustomerHistory() {
+            const modal = document.getElementById('customerHistoryModal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
         }
 
         function switchReportTab(uid, type) {
@@ -1594,12 +1635,31 @@
                     <div id="detailCustomerTable" class="grid grid-cols-1 gap-y-2 text-sm"></div>
                 </div>
 
-                <!-- Past Reports Section -->
+                <!-- Past Reports Section Removed -->
+            </div>
+            <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
+                <button onclick="closeCustomerDetail()"
+                    class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer History Modal -->
+    <div id="customerHistoryModal"
+        class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
+        <div
+            class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform transition-transform scale-95">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                <h3 class="font-bold text-lg text-gray-800">過去の活動記録</h3>
+                <button onclick="closeCustomerHistory()"
+                    class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-6">
                 <div id="historySection">
                     <h4
                         class="font-bold text-gray-700 mb-2 border-l-4 border-orange-500 pl-2 flex justify-between items-center">
                         <div class="flex items-center gap-2">
-                            <span>過去の活動記録</span>
+                            <span>タイムライン</span>
                             <button onclick="if(currentDetailId) loadCustomerHistory(currentDetailId, true)"
                                 class="p-1 hover:bg-orange-100 rounded text-orange-400 hover:text-orange-600 transition-colors"
                                 title="更新">
@@ -1625,7 +1685,7 @@
                 </div>
             </div>
             <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
-                <button onclick="closeCustomerDetail()"
+                <button onclick="closeCustomerHistory()"
                     class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
             </div>
         </div>
