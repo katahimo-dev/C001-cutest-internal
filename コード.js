@@ -1116,3 +1116,87 @@ function getUiConfig() {
         hiyariPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_HIYARI)
     };
 }
+
+/**
+ * Retrieves past reports for a specific customer.
+ * Returns both Daily and Accident reports, sorted by date (newest first).
+ */
+function getCustomerReports(customerId) {
+    const ss = getSpreadsheet();
+    const results = [];
+    const fmt = (d) => {
+        if (!d) return "";
+        if (d instanceof Date) return Utilities.formatDate(d, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+        return String(d);
+    };
+
+    // Helper to scan sheet backwards
+    const scanSheet = (sheetName, mapFn) => {
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet) return;
+        const lastRow = sheet.getLastRow();
+        if (lastRow < 2) return;
+
+        // Read all data (Header is row 1, data starts row 2)
+        const values = sheet.getDataRange().getValues();
+
+        // Loop backwards (Newest usually at bottom)
+        for (let i = values.length - 1; i >= 1; i--) {
+            const row = values[i];
+            const res = mapFn(row);
+            if (res) results.push(res);
+        }
+    };
+
+    // Daily Reports
+    // Index: 0=Time, 3=Staff, 4=CustId, 6=Original, 7=Internal, 8=Customer
+    scanSheet(REPORT_SHEET_NAME, (row) => {
+        // ID check
+        if (String(row[4]) !== String(customerId)) return null;
+        return {
+            type: 'daily',
+            timestamp: fmt(row[0]),
+            staff: row[3],
+            original: row[6],
+            internal: row[7],
+            customer: row[8]
+        };
+    });
+
+    // Accident Reports
+    // Index: 0=Time, 1=Staff, 2=CustId, 7=Loc, 8=Content, 9=Sit, 10=Resp, 11=Parent, 12=Diag, 13=Prev, 14=Original
+    scanSheet(ACCIDENT_SHEET_NAME || '事故報告', (row) => {
+        if (String(row[2]) !== String(customerId)) return null;
+
+        // Construct formatted internal report from structured fields
+        const parts = [];
+        if (row[6]) parts.push(`【発生時間】${row[6]}`); // OccTime
+        if (row[7]) parts.push(`【場所】${row[7]}`); // Loc
+        if (row[9]) parts.push(`【状況】\n${row[9]}`);
+        if (row[8]) parts.push(`【事故内容】\n${row[8]}`);
+        if (row[10]) parts.push(`【応急処置】\n${row[10]}`);
+        if (row[12]) parts.push(`【受診・治療】\n${row[12]}`);
+        if (row[13]) parts.push(`【再発防止策】\n${row[13]}`);
+
+        const internalText = parts.join('\n\n');
+
+        return {
+            type: 'accident',
+            timestamp: fmt(row[0]),
+            staff: row[1],
+            original: row[14],
+            internal: internalText,
+            customer: row[11], // Parent Correspondence
+            isAccident: true
+        };
+    });
+
+    // Sort by date descending
+    results.sort((a, b) => {
+        const da = new Date(a.timestamp);
+        const db = new Date(b.timestamp);
+        return db - da; // Descending
+    });
+
+    return results;
+}

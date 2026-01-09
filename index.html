@@ -910,12 +910,128 @@
             const modal = document.getElementById('customerDetailModal');
             modal.classList.remove('hidden');
             setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+            // Load History
+            loadCustomerHistory(id);
         }
 
         function closeCustomerDetail() {
             const modal = document.getElementById('customerDetailModal');
             modal.classList.add('opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 300);
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                document.getElementById('detailReportTimeline').innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>';
+                document.getElementById('historyLoading').classList.add('hidden');
+            }, 300);
+        }
+
+        // Cache Globals
+        let currentDetailId = null;
+        const historyCache = {};
+
+        function loadCustomerHistory(customerId, forceRefresh = false) {
+            currentDetailId = customerId;
+            const timeline = document.getElementById('detailReportTimeline');
+            const loader = document.getElementById('historyLoading');
+
+            // Use Cache if available and not forced
+            if (!forceRefresh && historyCache[customerId]) {
+                renderHistoryTimeline(historyCache[customerId]);
+                return;
+            }
+
+            timeline.innerHTML = '';
+            loader.classList.remove('hidden');
+
+            google.script.run.withSuccessHandler(reports => {
+                loader.classList.add('hidden');
+                historyCache[customerId] = reports || []; // Cache Result
+
+                if (!reports || reports.length === 0) {
+                    timeline.innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴はありません</div>';
+                    return;
+                }
+                renderHistoryTimeline(reports);
+            }).withFailureHandler(e => {
+                loader.classList.add('hidden');
+                timeline.innerHTML = `<div class="text-xs text-red-400 py-4 pl-4">読み込みエラー: ${e.message}</div>`;
+            }).getCustomerReports(customerId);
+        }
+
+        function renderHistoryTimeline(reports) {
+            const timeline = document.getElementById('detailReportTimeline');
+            let html = '';
+
+            reports.forEach((r, idx) => {
+                const isAccident = r.type === 'accident';
+                const dateStr = r.timestamp.split(' ')[0];
+                const timeStr = r.timestamp.split(' ')[1] || '';
+                const title = isAccident ? '事故報告' : '保育日報';
+                const colorClass = isAccident ? 'bg-red-500' : 'bg-blue-500';
+                // Unique IDs for toggling
+                const uid = `rep-${idx}`;
+
+                // Default tab
+                const defaultInternal = r.internal ? 'internal' : (r.original ? 'original' : 'customer');
+
+                html += `
+                    <div class="relative pl-6 pb-6 group transition-all duration-300 hover:pl-7">
+                        <!-- Dot -->
+                        <div class="absolute -left-[9px] top-1 w-5 h-5 rounded-full border-4 border-white ${colorClass} shadow-sm z-10"></div>
+                        
+                        <!-- Card -->
+                        <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                            <!-- Header -->
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="text-xs font-bold text-white px-2 py-0.5 rounded ${colorClass} mr-2">${title}</span>
+                                    <span class="text-sm font-bold text-gray-700">${dateStr}</span>
+                                    <span class="text-xs text-gray-500 ml-1">${timeStr}</span>
+                                </div>
+                                <div class="text-xs text-gray-400 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                    ${r.staff || '不明'}
+                                </div>
+                            </div>
+
+                            <!-- Controls (Tabs) -->
+                            <div class="flex space-x-1 mb-2 border-b border-gray-200 text-xs">
+                                <button onclick="switchReportTab('${uid}', 'original')" id="btn-${uid}-original" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">原本</button>
+                                <button onclick="switchReportTab('${uid}', 'internal')" id="btn-${uid}-internal" class="px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600">社内向け</button>
+                                <button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>
+                            </div>
+
+                            <!-- Content Areas -->
+                            <div class="text-sm text-gray-700 leading-relaxed min-h-[60px]">
+                                <div id="content-${uid}-original" class="hidden whitespace-pre-wrap">${r.original || '(なし)'}</div>
+                                <div id="content-${uid}-internal" class="whitespace-pre-wrap">${r.internal || '(なし)'}</div>
+                                <div id="content-${uid}-customer" class="hidden whitespace-pre-wrap">${r.customer || '(なし)'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            timeline.innerHTML = html;
+        }
+
+        function switchReportTab(uid, type) {
+            // Hide all contents
+            ['original', 'internal', 'customer'].forEach(t => {
+                const c = document.getElementById(`content-${uid}-${t}`);
+                if (c) c.classList.add('hidden');
+
+                const btn = document.getElementById(`btn-${uid}-${t}`);
+                // Reset button styles
+                if (btn) btn.className = 'px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors';
+            });
+
+            // Show selected
+            const target = document.getElementById(`content-${uid}-${type}`);
+            if (target) target.classList.remove('hidden');
+
+            const activeBtn = document.getElementById(`btn-${uid}-${type}`);
+            if (activeBtn) activeBtn.className = 'px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600';
         }
 
         // Modal Logic
@@ -1476,6 +1592,36 @@
                 <div>
                     <h4 class="font-bold text-gray-700 mb-2 border-l-4 border-green-500 pl-2">基本情報</h4>
                     <div id="detailCustomerTable" class="grid grid-cols-1 gap-y-2 text-sm"></div>
+                </div>
+
+                <!-- Past Reports Section -->
+                <div id="historySection">
+                    <h4
+                        class="font-bold text-gray-700 mb-2 border-l-4 border-orange-500 pl-2 flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <span>過去の活動記録</span>
+                            <button onclick="if(currentDetailId) loadCustomerHistory(currentDetailId, true)"
+                                class="p-1 hover:bg-orange-100 rounded text-orange-400 hover:text-orange-600 transition-colors"
+                                title="更新">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
+                        <span id="historyLoading"
+                            class="hidden text-xs font-normal text-gray-500 flex items-center gap-1">
+                            <div
+                                class="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin">
+                            </div>
+                            読み込み中...
+                        </span>
+                    </h4>
+                    <div id="detailReportTimeline" class="space-y-4 pl-2 border-l-2 border-gray-200 ml-2 relative">
+                        <!-- Timeline items will go here -->
+                        <div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>
+                    </div>
                 </div>
             </div>
             <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
