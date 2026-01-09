@@ -177,6 +177,10 @@ function getSheetByGid(ss, gid) {
  * Columns: B (Surname/Name), S (Address).
  * Filter: Extract City from Address.
  */
+/**
+ * Fetches Customer data from the specified Spreadsheet/Sheet.
+ * Returns full data for detailed view.
+ */
 function getData() {
     const ss = getSpreadsheet();
     let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
@@ -188,9 +192,26 @@ function getData() {
     const cData = cSheet.getDataRange().getValues();
     const fData = fSheet.getDataRange().getValues();
 
+    if (cData.length === 0) return { cities: [], customers: [] };
+
     // Headers are row 0. Data starts row 1.
+    const cHeaders = cData[0];
     const cRows = cData.slice(1);
     const fRows = fData.slice(1);
+
+    // Identify Columns by Header Name
+    const mapIndices = {};
+    cHeaders.forEach((h, i) => mapIndices[h] = i);
+
+    // Helper indices
+    const idxId = mapIndices['顧客ID'] !== undefined ? mapIndices['顧客ID'] : 0;
+    const idxSei = mapIndices['姓'];
+    const idxMei = mapIndices['名'];
+    const idxName = mapIndices['氏名'];
+    const idxAddr = mapIndices['住所'];
+    // For Map
+    const idxLat = mapIndices['緯度'];
+    const idxLng = mapIndices['経度'];
 
     // Helper to safe string
     const toStr = (val) => (val === null || val === undefined) ? "" : String(val);
@@ -217,11 +238,56 @@ function getData() {
     });
 
     const customers = cRows.map(row => {
-        const id = toStr(row[0]);
+        const id = toStr(row[idxId]);
         if (!id) return null; // Skip empty IDs
 
-        const name = toStr(row[1]);
-        const address = toStr(row[2]);
+        let name = "";
+        // Construct Name
+        if (idxSei !== undefined && idxMei !== undefined) {
+            const s = toStr(row[idxSei]);
+            const m = toStr(row[idxMei]);
+            name = s + " " + m;
+        } else if (idxName !== undefined) {
+            name = toStr(row[idxName]);
+        } else {
+            name = "Unknown";
+        }
+        name = name.trim();
+
+        const address = idxAddr !== undefined ? toStr(row[idxAddr]) : "";
+        const lat = idxLat !== undefined ? row[idxLat] : "";
+        const lng = idxLng !== undefined ? row[idxLng] : "";
+
+        const fmtDateTime = (val) => {
+            if (val instanceof Date) {
+                return Utilities.formatDate(val, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+            }
+            return toStr(val);
+        };
+
+
+        // Build Full Data Object (excluding sensitive)
+        // Use array to guarantee order
+        const orderedDetails = [];
+        cHeaders.forEach((h, i) => {
+            // Exclude fields
+            if (h === 'パスワード' || h === '顧客ID') return;
+
+            let val = row[i];
+            // Smart formatting based on type and header
+            if (val instanceof Date) {
+                if (h.includes('生年月日') || h.includes('誕生日')) {
+                    val = Utilities.formatDate(val, "Asia/Tokyo", "yyyy/MM/dd");
+                } else {
+                    // Assume timestamp for other dates like '登録日時', '最終更新日時'
+                    val = Utilities.formatDate(val, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+                }
+            } else {
+                val = toStr(val);
+            }
+
+            orderedDetails.push({ key: h, value: val });
+        });
 
         // Extract City
         let city = '';
@@ -240,7 +306,10 @@ function getData() {
             name: name,
             address: address,
             city: city,
-            family: familyMap[id] || []
+            lat: lat,
+            lng: lng,
+            family: familyMap[id] || [],
+            details: orderedDetails
         };
     }).filter(c => c !== null);
 
@@ -697,7 +766,7 @@ function checkAndImportLatestCsv() {
         }
 
         // Use shared helper - pass raw string!
-        const result = updateDatabaseFromLines(csvContent);
+        const result = updateDatabaseFromLinesV2(csvContent);
 
         if (result === "Upload Successful") {
             props.setProperty('LATEST_CSV_VERSION', latestTime.toString());
@@ -710,6 +779,25 @@ function checkAndImportLatestCsv() {
 
     } catch (e) {
         console.error("Auto Import Error: " + e.message);
+        return "Error: " + e.message;
+    }
+}
+/**
+ * Manually forces the import of the latest CSV, ignoring version checks.
+ * Run this function from the GAS Editor to update data immediately.
+ */
+function forceImportCsv() {
+    try {
+        // Reset Version
+        PropertiesService.getScriptProperties().deleteProperty('LATEST_CSV_VERSION');
+        console.log("Version reset. Starting import...");
+
+        // Run standard check (which will now see '0' as current version)
+        const result = checkAndImportLatestCsv();
+        console.log("Force Import Result: " + result);
+        return result;
+    } catch (e) {
+        console.error("Force Import Error: " + e.message);
         return "Error: " + e.message;
     }
 }
@@ -902,13 +990,120 @@ function getStaffList() {
         if (lastRow < 2) return [];
 
         // Name is in Col A (index 0 for getValues, but getRange is 1-based, so Column 1)
-        const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-        const staff = values.flat().filter(name => name && String(name).trim() !== "");
-        return [...new Set(staff)];
+        const range = sheet.getRange(2, 1, lastRow - 1, 1);
+        const values = range.getValues();
+        return values.map(row => row[0]).filter(name => name);
+
     } catch (e) {
-        return ["Error: " + e.message];
+        console.error("Staff List Error: " + e.message);
+        return [];
     }
 }
+
+/**
+ * V2: Shared helper to update database from Parsed CSV Lines (Array of Arrays)
+ * Supports full CSV column import.
+ */
+function updateDatabaseFromLinesV2(rawString) {
+    if (!rawString) return "Empty Data";
+
+    // Detect Delimiter: Try Tab then Comma
+    const firstLine = rawString.substring(0, rawString.indexOf('\n'));
+    let delimiter = ',';
+    // If tab count > visible comma count, assume tab
+    if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
+        delimiter = '\t';
+    }
+
+    const csvData = Utilities.parseCsv(rawString, delimiter);
+    if (!csvData || csvData.length < 2) return "Invalid CSV Data";
+
+    const ss = getSpreadsheet();
+    let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
+    let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
+
+    // Ensure sheets exist
+    if (!cSheet) cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
+    if (!fSheet) fSheet = ss.insertSheet(FAMILY_DB_NAME);
+
+    // Full Replace for Customer DB based on Requirement "CSV has all data"
+    // We will clear the sheet and rewrite it to match the CSV structure exactly.
+    cSheet.clearContents();
+
+    const headerRow = csvData[0];
+    const dataRows = csvData.slice(1);
+
+    // Write Headers
+    if (headerRow) cSheet.appendRow(headerRow);
+
+    // Write All Data
+    if (dataRows.length > 0) {
+        cSheet.getRange(2, 1, dataRows.length, headerRow.length).setValues(dataRows);
+    }
+
+    // Family DB Handling (Extract from CSV)
+    // We still need to parse Family info to populate FAMILY_DB_NAME
+    const idxFamily = headerRow.findIndex(h => h.includes('世帯') || h.includes('家族') || h.includes('Family'));
+    const idxId = headerRow.findIndex(h => h.includes('顧客ID'));
+
+    const fHeader = ['顧客ID', '家族氏名', '生年月日', '職業', 'アレルギー情報', '備考'];
+    // Reset Family DB as well
+    fSheet.clearContents();
+    fSheet.appendRow(fHeader);
+
+    const fRows = [];
+
+    if (idxId !== -1 && idxFamily !== -1) {
+        for (const row of dataRows) {
+            const id = String(row[idxId]);
+            if (!id) continue;
+
+            const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
+
+            if (familyRaw) {
+                const blocks = familyRaw.split(/[\r\n]+/).filter(line => line.trim() !== "");
+                blocks.forEach(line => {
+                    const parts = line.trim().split(/[\s　]+/);
+
+                    // Heuristic: Find DOB index
+                    let dobIndex = -1;
+                    for (let j = 0; j < parts.length; j++) {
+                        if (parts[j].match(/\d{4}\/\d{1,2}\/\d{1,2}/)) {
+                            dobIndex = j;
+                            break;
+                        }
+                    }
+
+                    if (dobIndex !== -1) {
+                        const fName = parts.slice(0, dobIndex).join(" ");
+                        const fDob = parts[dobIndex];
+                        const fJob = (dobIndex + 1 < parts.length) ? parts[dobIndex + 1] : "";
+                        const fAllergy = (dobIndex + 2 < parts.length) ? parts[dobIndex + 2] : "";
+                        const fInfo = (dobIndex + 3 < parts.length) ? parts.slice(dobIndex + 3).join(" ") : "";
+                        fRows.push([id, fName, fDob, fJob, fAllergy, fInfo]);
+                    } else {
+                        // Fallback
+                        if (parts.length > 0) {
+                            const fName = parts[0] + (parts.length > 1 ? " " + parts[1] : "");
+                            const fRest = parts.slice(2).join(" ");
+                            fRows.push([id, fName, "", "", "", fRest]);
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    if (fRows.length > 0) {
+        fSheet.getRange(2, 1, fRows.length, fHeader.length).setValues(fRows);
+    }
+
+    // Update Data Version
+    PropertiesService.getScriptProperties().setProperty('DATA_VERSION', String(Date.now()));
+
+    return "Upload Successful";
+}
+
 
 /**
  * Retrieves UI configuration (placeholders, hints) from the prompt sheet.
