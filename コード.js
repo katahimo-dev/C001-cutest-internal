@@ -714,28 +714,7 @@ function checkAndImportLatestCsv() {
     }
 }
 
-/**
- * Processes uploaded CSV data (Base64 encoded string).
- * Called from client-side file input.
- */
-function processCsvData(base64Data) {
-    try {
-        const decoded = Utilities.base64Decode(base64Data);
-        // Detect encoding if possible? Assuming UTF-8 for now as per web standard.
-        // If Shift-JIS is common in Japan, we might need 'Shift_JIS' but 'UTF-8' is standard for Drive/Web.
-        const blob = Utilities.newBlob(decoded);
-        let csvString = blob.getDataAsString('UTF-8');
 
-        if (!csvString.includes('顧客ID')) {
-            csvString = blob.getDataAsString('Shift_JIS');
-        }
-
-        return updateDatabaseFromLines(csvString);
-
-    } catch (e) {
-        return "Error: " + e.message;
-    }
-}
 
 /**
  * Shared helper to update database from Parsed CSV Lines (Array of Arrays)
