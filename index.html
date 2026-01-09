@@ -516,13 +516,22 @@
         };
 
         function startVersionPolling() {
-            checkForUpdates(); // Check immediately on load
+            // First check for new CSV import on load
+            google.script.run.withSuccessHandler(res => {
+                console.log("CSV Auto-Import Check:", res);
+                if (res && res.startsWith("Imported")) {
+                    showToast("新しいデータを読み込みました", false);
+                    reloadData(true); // Force reload immediately
+                } else {
+                    checkForUpdates(); // Continue with normal check
+                }
+            }).checkAndImportLatestCsv();
+
             setInterval(checkForUpdates, 60000); // Check every minute
         }
 
         function checkForUpdates() {
             // Check current version from server
-
             google.script.run.withSuccessHandler(serverVersion => {
                 if (serverVersion && serverVersion !== localDataVersion) {
                     console.log("New data detected:", serverVersion);

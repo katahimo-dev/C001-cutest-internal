@@ -44,8 +44,8 @@ const DEFAULT_PROMPTS = {
 # 出力フォーマット (JSON)
 {
   "warnings": ["不足項目名1", "不足項目名2"], // なければ空配列 []
-  "internal": "社内向けレポート内容（事実・客観的）。不足部分は推測せず、入力内容のみで構成。",
-  "customer": "保護者向けレポート内容（親しみやすく）。不足部分は推測せず、入力内容のみで構成。"
+  "internal": "社内向けレポート内容（事実・客観的）。読みやすさのため、適宜改行コード(\\n)を含めてください。",
+  "customer": "保護者向けレポート内容（親しみやすく）。読みやすさのため、適宜改行コード(\\n)を含めてください。"
 }
 `,
     [PROMPT_KEYS.GENERATE_ACCIDENT]: `
@@ -344,8 +344,23 @@ function generateReportWithWarnings(inputData) {
     let prompt = promptTemplate.replace('{anonymizedText}', text);
     prompt = prompt.replace('{timeInfo}', timeInfo);
 
-    // Call with text part
-    const result = callGemini(apiKey, [{ text: prompt }]);
+    // Schema for Daily Report
+    const dailyReportSchema = {
+        type: "OBJECT",
+        properties: {
+            warnings: { type: "ARRAY", items: { type: "STRING" } },
+            internal: { type: "STRING" },
+            customer: { type: "STRING" }
+        },
+        required: ["warnings", "internal", "customer"]
+    };
+
+    // Call with schema
+    const result = callGemini(apiKey, [{ text: prompt }], {
+        responseMimeType: "application/json",
+        responseSchema: dailyReportSchema
+    });
+
     if (result.error) {
         return { warnings: ["API Error"], internal: result.error, customer: "" };
     }
@@ -606,84 +621,209 @@ function verifyLogin(userId, password) {
 const CUSTOMER_DB_NAME = '顧客DB_New';
 const FAMILY_DB_NAME = '家族DB_New';
 
-function uploadCustomerCsv(csvContent) {
+// Google Drive Folder ID for Auto CSV Import
+const AUTO_CSV_FOLDER_ID = '1wLjR6iZ447tbUa3ff59bejoM5aXh8clC';
+
+/**
+ * Checks for the latest CSV in the dedicated folder and imports it if newer.
+ * Can be run manually or by a time-based trigger.
+ */
+function checkAndImportLatestCsv() {
+    try {
+        const folder = DriveApp.getFolderById(AUTO_CSV_FOLDER_ID);
+        // getFilesByName exact match might not work with prefix. Use getFiles() and filter.
+        let latestFile = null;
+        let latestTime = 0;
+
+        const iterator = folder.getFiles();
+        while (iterator.hasNext()) {
+            const file = iterator.next();
+            const name = file.getName();
+
+            // Match pattern: Kokyaku_YYYYMMDDHHmm_1.csv
+            // We just need to parse the timestamp part purely string based or regex
+            const match = name.match(/^Kokyaku_(\d{12})_\d+\.csv$/);
+            if (match) {
+                const timeStr = match[1];
+                // Simple numerical comparison is enough for YYYYMMDDHHmm format
+                const timeVal = parseInt(timeStr, 10);
+
+                if (timeVal > latestTime) {
+                    latestTime = timeVal;
+                    latestFile = file;
+                }
+            }
+        }
+
+        if (!latestFile) {
+            console.log("No matching CSV files found.");
+            return "No files found";
+        }
+
+        // Check if we already imported this version
+        const props = PropertiesService.getScriptProperties();
+        const currentVersion = parseInt(props.getProperty('LATEST_CSV_VERSION') || '0', 10);
+
+        if (latestTime <= currentVersion) {
+            console.log("Already up to date. Latest: " + latestTime);
+            return "Already up to date";
+        }
+
+        console.log("Newer CSV found: " + latestFile.getName());
+
+        // Read content
+        // Try UTF-16LE first as it appeared in error logs, then Shift_JIS, then UTF-8
+        const blob = latestFile.getBlob();
+        let csvContent = "";
+        let detected = false;
+        const encodings = ['UTF-16LE', 'Shift_JIS', 'UTF-8'];
+
+        for (const enc of encodings) {
+            try {
+                const text = blob.getDataAsString(enc);
+                // Check for key header to validate encoding
+                if (text.includes('顧客ID') || text.includes('Customer')) {
+                    csvContent = text;
+                    detected = true;
+                    console.log("Detected Encoding: " + enc);
+                    break;
+                }
+            } catch (e) { }
+        }
+
+        if (!detected) {
+            console.log("Encoding detection failed, using default UTF-8");
+            csvContent = blob.getDataAsString('UTF-8');
+        }
+
+        // Use shared helper - pass raw string!
+        const result = updateDatabaseFromLines(csvContent);
+
+        if (result === "Upload Successful") {
+            props.setProperty('LATEST_CSV_VERSION', latestTime.toString());
+            console.log("Import Success");
+            return "Imported: " + latestFile.getName();
+        } else {
+            console.error("Import Failed: " + result);
+            return "Failed: " + result;
+        }
+
+    } catch (e) {
+        console.error("Auto Import Error: " + e.message);
+        return "Error: " + e.message;
+    }
+}
+
+/**
+ * Processes uploaded CSV data (Base64 encoded string).
+ * Called from client-side file input.
+ */
+function processCsvData(base64Data) {
+    try {
+        const decoded = Utilities.base64Decode(base64Data);
+        // Detect encoding if possible? Assuming UTF-8 for now as per web standard.
+        // If Shift-JIS is common in Japan, we might need 'Shift_JIS' but 'UTF-8' is standard for Drive/Web.
+        const blob = Utilities.newBlob(decoded);
+        let csvString = blob.getDataAsString('UTF-8');
+
+        if (!csvString.includes('顧客ID')) {
+            csvString = blob.getDataAsString('Shift_JIS');
+        }
+
+        return updateDatabaseFromLines(csvString);
+
+    } catch (e) {
+        return "Error: " + e.message;
+    }
+}
+
+/**
+ * Shared helper to update database from Parsed CSV Lines (Array of Arrays)
+ */
+function updateDatabaseFromLines(rawString) {
+    if (!rawString) return "Empty Data";
+
+    // Detect Delimiter: Try Tab then Comma
+    const firstLine = rawString.substring(0, rawString.indexOf('\n'));
+    let delimiter = ',';
+    // If tab count > visible comma count, assume tab
+    if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
+        delimiter = '\t';
+    }
+
+    const csvData = Utilities.parseCsv(rawString, delimiter);
+    if (!csvData || csvData.length < 2) return "Invalid CSV Data";
+
     const ss = getSpreadsheet();
     let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
     let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
 
-    // Create sheets if not exist
-    if (!cSheet) {
-        cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
-        cSheet.appendRow(['ID', 'Name', 'Address']); // Minimal key fields
-    }
-    if (!fSheet) {
-        fSheet = ss.insertSheet(FAMILY_DB_NAME);
-        fSheet.appendRow(['CustomerID', 'Name', 'DOB', 'Job', 'Allergy', 'Info']);
-    }
+    // Ensure sheets exist
+    if (!cSheet) cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
+    if (!fSheet) fSheet = ss.insertSheet(FAMILY_DB_NAME);
 
-    // Detect Delimiter (Simple Heuristic: check first line)
-    const firstLine = csvContent.substring(0, csvContent.indexOf('\n'));
-    let delimiter = ',';
-    if (firstLine.indexOf('\t') !== -1 && (firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
-        delimiter = '\t';
-    }
+    const cHeader = ['顧客ID', '氏名', '住所 (建物名・部屋番号)'];
+    // Check/Init Headers
+    if (cSheet.getLastRow() === 0) cSheet.appendRow(cHeader);
 
-    // Parse CSV
-    const rows = Utilities.parseCsv(csvContent, delimiter);
-    if (rows.length < 2) return "No data found";
+    const fHeader = ['顧客ID', '家族氏名', '生年月日', '職業', 'アレルギー情報', '備考'];
+    if (fSheet.getLastRow() === 0) fSheet.appendRow(fHeader);
 
-    // Column Mapping
-    const header = rows[0];
-    let idxId = -1, idxName = -1, idxAddr = -1, idxFamily = -1;
-
-    for (let i = 0; i < header.length; i++) {
-        const col = String(header[i]).trim();
-        if (col.includes("ID") && !col.includes("Benefit")) idxId = i;
-        else if (col.includes("顧客ID")) idxId = i; // Fallback
-
-        if (col.includes("氏名") || col.includes("Name")) idxName = i;
-        if (col.includes("住所") || col.includes("Address")) idxAddr = i;
-        if (col.includes("世帯全員の情報") || col.includes("Family")) idxFamily = i;
-    }
-
-    // Fallbacks if not found (based on user spec)
-    if (idxId === -1) idxId = 0; // Default A
-    if (idxName === -1) idxName = 1; // Default B
-    if (idxAddr === -1) idxAddr = 18; // Default S
-    if (idxFamily === -1) idxFamily = 24; // Default Y
-
-    // Read existing data for Upsert
-    const cData = cSheet.getDataRange().getValues();
+    // Existing Data Map for Updates (only Customer DB)
+    const cCurrent = cSheet.getDataRange().getValues();
     const cMap = new Map();
-    for (let i = 1; i < cData.length; i++) cMap.set(String(cData[i][0]), i + 1); // ID -> RowNum
-
-    const fData = fSheet.getDataRange().getValues();
-    const fHeader = fData[0];
-    let fRows = fData.slice(1);
-
-    // IDs in the CSV
-    const csvIds = new Set();
-    // Pre-scan to gather IDs for filtering families
-    for (let i = 1; i < rows.length; i++) {
-        if (rows[i].length > idxId) csvIds.add(String(rows[i][idxId]));
+    // Start from 1 (skip header)
+    for (let i = 1; i < cCurrent.length; i++) {
+        cMap.set(String(cCurrent[i][0]), i + 1); // ID -> RowNum
     }
 
-    // Filter out families of affected customers
-    fRows = fRows.filter(r => !csvIds.has(String(r[0])));
-
+    const updates = [];
     const newCRows = [];
-    const updates = []; // {row: x, val: []}
-    const newFRows = [];
+    // Always append new Family data logic
+    const fRows = [];
 
-    for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row.length <= idxId) continue;
+    // Assuming first row is header
+    const headerRow = csvData[0];
+    const dataRows = csvData.slice(1);
 
+    // Detect Column Indices 
+    const idxId = headerRow.findIndex(h => h.includes('顧客ID'));
+    // Handle separate Name columns if necessary
+    const idxLastName = headerRow.findIndex(h => h === '姓');
+    const idxFirstName = headerRow.findIndex(h => h === '名');
+    const idxName = headerRow.findIndex(h => h.includes('氏名') || h.includes('Name')); // Fallback
+
+    const idxAddr = headerRow.findIndex(h => h.includes('住所') || h.includes('地番'));
+
+    // Family column might be "世帯全員の情報" or similar
+    const idxFamily = headerRow.findIndex(h => h.includes('世帯') || h.includes('家族') || h.includes('Family'));
+
+    if (idxId === -1) return "Invalid CSV Format (Missing ID)";
+
+    for (const row of dataRows) {
         const id = String(row[idxId]);
-        // Safety checks for indices
-        const name = (idxName < row.length) ? row[idxName] : "";
-        const address = (idxAddr < row.length) ? row[idxAddr] : "";
-        const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
+        if (!id) continue;
+
+        let name = "";
+        if (idxLastName !== -1 && idxFirstName !== -1) {
+            name = (row[idxLastName] || "") + " " + (row[idxFirstName] || "");
+        } else if (idxName !== -1) {
+            name = row[idxName];
+        } else {
+            // Fallback if no specific name header found, try col 1+2
+            if (row.length > 2) name = row[1] + " " + row[2];
+        }
+        name = name.trim();
+
+        // Address
+        let address = "";
+        if (idxAddr !== -1 && idxAddr < row.length) {
+            address = row[idxAddr];
+        } else {
+            // Fallback for address?
+        }
+
+        const familyRaw = (idxFamily !== -1 && idxFamily < row.length) ? row[idxFamily] : "";
 
         // Customer Upsert
         if (cMap.has(id)) {
@@ -696,9 +836,6 @@ function uploadCustomerCsv(csvContent) {
         if (familyRaw) {
             const blocks = familyRaw.split(/[\r\n]+/).filter(line => line.trim() !== "");
             blocks.forEach(line => {
-                // "鈴木 健一 1982/02/14 自営業 ..."
-                // Assumption: Name is first 1 or 2 parts. 
-                // To be robust: Date like YYYY/MM/DD is likely DOB.
                 const parts = line.trim().split(/[\s　]+/);
 
                 // Heuristic: Find DOB index
@@ -718,7 +855,7 @@ function uploadCustomerCsv(csvContent) {
                     const fInfo = (dobIndex + 3 < parts.length) ? parts.slice(dobIndex + 3).join(" ") : "";
                     fRows.push([id, fName, fDob, fJob, fAllergy, fInfo]);
                 } else {
-                    // Fallback if no date found: just dump
+                    // Fallback
                     if (parts.length > 0) {
                         const fName = parts[0] + (parts.length > 1 ? " " + parts[1] : "");
                         const fRest = parts.slice(2).join(" ");
@@ -739,10 +876,17 @@ function uploadCustomerCsv(csvContent) {
 
     // Rewrite Families (Filtering old + Adding new)
     if (fRows.length > 0) {
-        fSheet.getRange(2, 1, fSheet.getLastRow(), fHeader.length).clearContent();
+        // Only clear if we have new data to put in? 
+        // Or if this is a partial update? Previous app seemed to be "Bulk Upload" style.
+        // I will follow the "Bulk Replace" pattern for Family DB to avoid duplicates if that was the logic.
+        // Warning: This wipes data not in the CSV.
+
+        // SAFEGUARD: If this is an automatic import, we expect the CSV to be full dump.
+        const lastRow = fSheet.getLastRow();
+        if (lastRow > 1) {
+            fSheet.getRange(2, 1, lastRow - 1, fHeader.length).clearContent();
+        }
         fSheet.getRange(2, 1, fRows.length, fHeader.length).setValues(fRows);
-    } else {
-        if (fSheet.getLastRow() > 1) fSheet.getRange(2, 1, fSheet.getLastRow() - 1, fHeader.length).clearContent();
     }
 
     // Update Data Version
