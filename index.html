@@ -52,6 +52,41 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* Font Size Settings */
+        html[data-text-size="medium"] .text-xs {
+            font-size: 0.875rem !important;
+            line-height: 1.4 !important;
+        }
+
+        html[data-text-size="medium"] .text-sm {
+            font-size: 1rem !important;
+            line-height: 1.5 !important;
+        }
+
+        html[data-text-size="medium"] .text-base {
+            font-size: 1.05rem !important;
+        }
+
+        html[data-text-size="large"] .text-xs {
+            font-size: 1rem !important;
+            line-height: 1.5 !important;
+        }
+
+        html[data-text-size="large"] .text-sm {
+            font-size: 1.125rem !important;
+            line-height: 1.6 !important;
+        }
+
+        html[data-text-size="large"] .text-base {
+            font-size: 1.2rem !important;
+        }
+
+        html[data-text-size="large"] input,
+        html[data-text-size="large"] textarea,
+        html[data-text-size="large"] button {
+            font-size: 1.1rem !important;
+        }
     </style>
 </head>
 
@@ -91,8 +126,17 @@
         <header class="bg-blue-600 text-white p-4 shadow-md z-10 sticky top-0 flex items-center justify-between">
             <h1 class="text-xl font-bold tracking-wider">保育日報</h1>
             <div class="flex items-center gap-3">
-
                 <span id="headerUserName" class="text-sm font-medium opacity-90"></span>
+                <button onclick="openSettings()"
+                    class="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors" title="設定">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                        </path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
                 <button onclick="doLogout()" class="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
                     title="ログアウト">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,7 +215,7 @@
                 </div>
 
                 <!-- Family Selector -->
-                <div class="px-4 pt-3 pb-1 bg-blue-50">
+                <div id="familySelectorContainer" class="px-4 pt-3 pb-1 bg-blue-50">
                     <label class="block text-xs font-bold text-gray-600 mb-1">対象のお子様</label>
                     <select id="familySelector" onchange="onFamilySelect()"
                         class="w-full p-2 text-sm border-gray-300 rounded mb-2">
@@ -264,8 +308,7 @@
                             </div>
                         </div>
                         <textarea id="reportInput" rows="6"
-                            class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"
-                            placeholder="状況や内容を自由に入力してください..."></textarea>
+                            class="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 transition-all resize-none text-base"></textarea>
 
 
                         <!-- Warnings Area -->
@@ -358,12 +401,12 @@
                                 <div>
                                     <label class="block text-xs font-medium text-gray-500">対象者氏名</label>
                                     <input type="text" id="accTargetName"
-                                        class="w-full p-2 rounded border border-gray-300 text-sm bg-gray-50" readonly>
+                                        class="w-full p-2 rounded border border-gray-300 text-sm">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-500">生年月日</label>
                                     <input type="text" id="accTargetDob"
-                                        class="w-full p-2 rounded border border-gray-300 text-sm bg-gray-50" readonly>
+                                        class="w-full p-2 rounded border border-gray-300 text-sm">
                                 </div>
                             </div>
                             <div>
@@ -436,7 +479,7 @@
         <div
             class="bg-white w-full max-w-lg mx-4 rounded-xl shadow-2xl flex flex-col max-h-[80vh] transform transition-transform scale-95">
             <div class="p-4 border-b flex justify-between items-center bg-indigo-50 rounded-t-xl">
-                <h3 class="font-bold text-gray-800">事故報告書の書き方ヒント</h3>
+                <h3 id="hintModalTitle" class="font-bold text-gray-800">事故報告書の書き方ヒント</h3>
                 <button onclick="toggleHint()"
                     class="p-2 hover:bg-indigo-100 rounded-full text-indigo-500">&times;</button>
             </div>
@@ -544,6 +587,7 @@
                 tabAccident.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
 
                 document.getElementById('endTimeContainer').classList.remove('hidden');
+                document.getElementById('familySelectorContainer').classList.add('hidden'); // Hide Family Selector
                 document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
 
                 hintBtn.classList.add('hidden');
@@ -551,7 +595,7 @@
 
                 if (imageSection) imageSection.classList.remove('hidden');
 
-                input.placeholder = uiConfig.dailyPlaceholder || "状況や内容を自由に入力してください...";
+                input.placeholder = uiConfig.dailyPlaceholder || "";
 
                 // Show/Hide results based on previous state
                 const hasDailyResult = document.getElementById('internalResult').value !== '';
@@ -569,6 +613,7 @@
                 tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
 
                 document.getElementById('endTimeContainer').classList.add('hidden');
+                document.getElementById('familySelectorContainer').classList.remove('hidden'); // Show Family Selector
                 document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
 
                 hintBtn.classList.remove('hidden');
@@ -594,20 +639,28 @@
 
         function updateAccidentPlaceholder() {
             if (currentReportMode !== 'accident') return;
-            const type = document.querySelector('input[name="accType"]:checked').value;
+            // Always use Accident placeholder even for Hiyarihatto
             const input = document.getElementById('reportInput');
-
-            if (type === 'ヒヤリハット') {
-                input.placeholder = uiConfig.hiyariPlaceholder || "ヒヤリハットの状況を入力してください...";
-            } else {
-                input.placeholder = uiConfig.accidentPlaceholder || "事故の状況を詳しく入力してください...";
-            }
+            input.placeholder = uiConfig.accidentPlaceholder || "";
         }
 
         function toggleHint() {
             const modal = document.getElementById('hintModal');
             if (modal.classList.contains('hidden')) {
-                document.getElementById('hintContent').textContent = uiConfig.accidentHint || "Loading...";
+                let content = uiConfig.accidentHint || "Loading...";
+                let title = "事故報告書の書き方ヒント";
+
+                // If in accident mode and Hiyarihatto is selected, use Hiyari placeholder text as hint
+                if (currentReportMode === 'accident') {
+                    const typeRadio = document.querySelector('input[name="accType"]:checked');
+                    if (typeRadio && typeRadio.value === 'ヒヤリハット') {
+                        content = uiConfig.hiyariPlaceholder || "ヒヤリハットの状況を入力してください...";
+                        title = "ヒヤリハットの書き方ヒント";
+                    }
+                }
+
+                document.getElementById('hintContent').textContent = content;
+                document.getElementById('hintModalTitle').textContent = title;
                 modal.classList.remove('hidden');
                 setTimeout(() => modal.classList.remove('opacity-0'), 10);
             } else {
@@ -1690,6 +1743,78 @@
             </div>
         </div>
     </div>
+    <!-- Settings Modal -->
+    <div id="settingsModal"
+        class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
+        <div
+            class="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col transform transition-transform scale-95">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                <h3 class="font-bold text-lg text-gray-800">設定</h3>
+                <button onclick="closeSettings()"
+                    class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
+            </div>
+            <div class="p-6">
+                <h4 class="font-bold text-gray-700 mb-4">文字サイズ設定</h4>
+                <div class="space-y-3">
+                    <label
+                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                        <input type="radio" name="textSize" value="small" onchange="applyTextSize('small')"
+                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <span class="text-xs text-gray-600">小 (標準)</span>
+                    </label>
+                    <label
+                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                        <input type="radio" name="textSize" value="medium" onchange="applyTextSize('medium')"
+                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <span class="text-sm font-bold text-gray-800">中 (少し大きく)</span>
+                    </label>
+                    <label
+                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                        <input type="radio" name="textSize" value="large" onchange="applyTextSize('large')"
+                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <span class="text-base font-bold text-gray-900">大 (大きく)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
+                <button onclick="closeSettings()"
+                    class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Init font size from local storage defaults to small
+        (function () {
+            const saved = localStorage.getItem('app_text_size') || 'small';
+            document.documentElement.setAttribute('data-text-size', saved);
+        })();
+
+        function openSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            setTimeout(() => {
+                modal.querySelector('div').classList.remove('scale-95');
+                modal.querySelector('div').classList.add('transition-all');
+            }, 10);
+
+            // Set radio
+            const current = localStorage.getItem('app_text_size') || 'small';
+            const radio = document.querySelector(`input[name="textSize"][value="${current}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        function closeSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        function applyTextSize(size) {
+            document.documentElement.setAttribute('data-text-size', size);
+            localStorage.setItem('app_text_size', size);
+        }
+    </script>
 </body>
 
 </html>
