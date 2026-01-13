@@ -6,8 +6,8 @@ const SPREADSHEET_ID = '1Y0ciyR4LHwCPwIkcuqwhQnD9k_-WBHn0nnwNRzFaacM';
 const TARGET_GID = 1224762512;
 const PROMPT_SHEET_NAME = 'ＡＩプロンプト';
 const REPORT_SHEET_NAME = '日報';
-const STAFF_SS_ID = "1yfVdlHeptbGZxTawIQjGLZu60T4726tEveLjOO-aL6Q";
-const STAFF_GID = 939066637;
+const STAFF_SS_ID = "1exqD69qZqACm9KOUPpa0fVWRYD2qEZfce7I6TOs_VDk";
+const STAFF_GID = 2002628493;
 
 // New Constants for Receipt Images
 const RECEIPT_FOLDER_ID = '1fruKZdH4gigbUB54VOrvYDa31cotVSdD';
@@ -507,6 +507,15 @@ function saveReport(reportData) {
         }
     }
 
+    // --- LineWorks Notification ---
+    try {
+        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n顧客: ${reportData.customerName}\n\n${reportData.internalText}`;
+        sendToLineWorks(lwText);
+    } catch (e) {
+        console.error("LineWorks Notification Failed: " + e.message);
+    }
+    // ------------------------------
+
     return { success: true, message: "保存しました (" + imageStatus + ")" };
 }
 
@@ -660,6 +669,16 @@ function saveAccidentReport(reportData) {
         reportData.reportType || "事故報告" // Default to Accident if missing
     ]);
 
+    // --- LineWorks Notification ---
+    try {
+        const typeLabel = reportData.reportType || "事故報告";
+        const lwText = `【${typeLabel}】\n担当: ${reportData.staffName}\n対象: ${reportData.targetName}\n件名: ${reportData.accidentContent}\n\n状況: ${reportData.situation}`;
+        sendToLineWorks(lwText);
+    } catch (e) {
+        console.error("LineWorks Accident Notification Failed: " + e.message);
+    }
+    // ------------------------------
+
     return "Success";
 }
 
@@ -670,15 +689,29 @@ function saveAccidentReport(reportData) {
 function verifyLogin(userId, password) {
     try {
         const ss = SpreadsheetApp.openById(STAFF_SS_ID);
-        const sheet = ss.getSheets().find(s => s.getSheetId() == STAFF_GID);
+        let sheet = null;
+        const sheets = ss.getSheets();
+        for (let i = 0; i < sheets.length; i++) {
+            if (sheets[i].getSheetId() === STAFF_GID) {
+                sheet = sheets[i];
+                break;
+            }
+        }
+
         if (!sheet) return { success: false, message: "Staff sheet not found" };
 
         const data = sheet.getDataRange().getValues().slice(1); // Skip header
-        // New Layout: Col A(0): Name, B(1): UserID, C(2): Password, D(3): Admin
-        const user = data.find(row => row[1] == userId && row[2] == password);
+
+        // New Layout:
+        // Col 1: Name
+        // Col 9: UserID
+        // Col 10: Password
+        // Col 11: Admin (1 = true)
+        const user = data.find(row => String(row[9]) === userId && String(row[10]) === password);
 
         if (user) {
-            return { success: true, name: user[0], isAdmin: (user[3] == 1) };
+            const isAdmin = (user[11] == 1 || user[11] === '1');
+            return { success: true, name: user[1], isAdmin: isAdmin };
         } else {
             return { success: false, message: "Invalid ID or password" };
         }

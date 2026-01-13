@@ -90,9 +90,10 @@
     </style>
 </head>
 
-<body class="bg-gray-50 min-h-screen text-gray-800">
+<body class="bg-gray-100 min-h-screen text-gray-800 flex justify-center">
 
-    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative bg-white shadow-xl overflow-hidden">
+    <div id="app" style="width: 100%; max-width: 480px;"
+        class="min-h-screen flex flex-col relative bg-white shadow-xl overflow-hidden">
         <!-- Login Modal -->
         <div id="loginModal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-6">
@@ -462,371 +463,514 @@
 
                 </div>
             </div>
+
+
         </div>
 
-    </div>
+        <!-- Toast Notification -->
+        <div id="toast"
+            class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50 text-sm font-medium">
+            Notification Message
+        </div>
 
-    <!-- Toast Notification -->
-    <div id="toast"
-        class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50 text-sm font-medium">
-        Notification Message
-    </div>
+        <!-- Settings Modal -->
+        <div id="settingsModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[100] hidden flex items-center justify-center transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-sm mx-4 rounded-xl shadow-xl flex flex-col transform transition-transform scale-95">
+                <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                    <h3 class="font-bold text-gray-800">設定</h3>
+                    <button onclick="closeSettings()"
+                        class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
+                </div>
+                <div class="p-6 space-y-6">
 
-    <!-- Script -->
-    <!-- Hint Modal -->
-    <div id="hintModal"
-        class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center transition-opacity opacity-0">
-        <div
-            class="bg-white w-full max-w-lg mx-4 rounded-xl shadow-2xl flex flex-col max-h-[80vh] transform transition-transform scale-95">
-            <div class="p-4 border-b flex justify-between items-center bg-indigo-50 rounded-t-xl">
-                <h3 id="hintModalTitle" class="font-bold text-gray-800">事故報告書の書き方ヒント</h3>
-                <button onclick="toggleHint()"
-                    class="p-2 hover:bg-indigo-100 rounded-full text-indigo-500">&times;</button>
-            </div>
-            <div class="p-6 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-700" id="hintContent">
-                <!-- Content loaded from JS -->
-            </div>
-            <div class="p-4 border-t bg-gray-50 rounded-b-xl text-right">
-                <button onclick="toggleHint()"
-                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">閉じる</button>
+                    <!-- Font Size Settings (Radio Layout) -->
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-3">文字サイズ設定</h4>
+                        <div class="space-y-3">
+                            <label
+                                class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                                <input type="radio" name="textSize" value="small" onchange="applyTextSize('small')"
+                                    class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                                <span class="text-xs text-gray-600">小 (標準)</span>
+                            </label>
+                            <label
+                                class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                                <input type="radio" name="textSize" value="medium" onchange="applyTextSize('medium')"
+                                    class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                                <span class="text-sm font-bold text-gray-800">中 (少し大きく)</span>
+                            </label>
+                            <label
+                                class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
+                                <input type="radio" name="textSize" value="large" onchange="applyTextSize('large')"
+                                    class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
+                                <span class="text-base font-bold text-gray-900">大 (大きく)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Admin Settings Area -->
+                    <div id="adminSettingsArea" class="hidden border-t pt-4">
+                        <h4 class="text-sm font-bold text-red-600 mb-3">管理者設定</h4>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">LineWorks 通知先ID</label>
+                            <p class="text-xs text-gray-400 mb-2">トークルームID または ユーザーID</p>
+                            <input type="text" id="settingLwTargetId" placeholder="Loading..."
+                                class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
+                            <p class="text-[10px] text-gray-400 mt-1">※ 全ユーザー共通の設定です</p>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end">
+                    <button onclick="saveSettings()"
+                        class="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700">保存して閉じる</button>
+                </div>
             </div>
         </div>
-    </div>
+
+        <!-- Script -->
+        <!-- Hint Modal -->
+        <div id="hintModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-lg mx-4 rounded-xl shadow-2xl flex flex-col max-h-[80vh] transform transition-transform scale-95">
+                <div class="p-4 border-b flex justify-between items-center bg-indigo-50 rounded-t-xl">
+                    <h3 id="hintModalTitle" class="font-bold text-gray-800">事故報告書の書き方ヒント</h3>
+                    <button onclick="toggleHint()"
+                        class="p-2 hover:bg-indigo-100 rounded-full text-indigo-500">&times;</button>
+                </div>
+                <div class="p-6 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-700"
+                    id="hintContent">
+                    <!-- Content loaded from JS -->
+                </div>
+                <div class="p-4 border-t bg-gray-50 rounded-b-xl text-right">
+                    <button onclick="toggleHint()"
+                        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">閉じる</button>
+                </div>
+            </div>
+        </div>
 
 
 
-    <script>
-        let allCustomers = [];
-        let currentCustomer = null;
-        let currentStaffName = '';
-        let currentReportMode = 'daily'; // 'daily' or 'accident'
-        let uiConfig = {};
+        <script>
+            let allCustomers = [];
+            let currentCustomer = null;
+            let currentStaffName = '';
+            let currentReportMode = 'daily'; // 'daily' or 'accident'
+            let uiConfig = {};
 
-        let localDataVersion = '0';
+            let localDataVersion = '0';
 
-        const CACHE_KEY = 'GAS_CUSTOMER_DATA_V2';
-        const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
-        const STAFF_ADMIN_KEY = 'GAS_STAFF_ADMIN';
-        const ENC_KEY = 123; // Simple key
+            const CACHE_KEY = 'GAS_CUSTOMER_DATA_V2';
+            const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
+            const STAFF_ADMIN_KEY = 'GAS_STAFF_ADMIN';
+            const ENC_KEY = 123; // Simple key
 
-        // Initialize
-        window.onload = function () {
-            populateHours();
-            checkLogin();
-            loadUiConfig();
-            startVersionPolling();
-        };
+            // Initialize
+            window.onload = function () {
+                // Restore Font Size
+                const savedSize = localStorage.getItem('app_text_size') || 'small';
+                document.documentElement.setAttribute('data-text-size', savedSize);
 
-        function startVersionPolling() {
-            // First check for new CSV import on load
-            google.script.run.withSuccessHandler(res => {
-                console.log("CSV Auto-Import Check:", res);
-                if (res && res.startsWith("Imported")) {
-                    showToast("新しいデータを読み込みました", false);
-                    reloadData(true); // Force reload immediately
-                } else {
-                    checkForUpdates(); // Continue with normal check
-                }
-            }).checkAndImportLatestCsv();
+                populateHours();
+                checkLogin();
+                loadUiConfig();
+                startVersionPolling();
+            };
 
-            setInterval(checkForUpdates, 60000); // Check every minute
-        }
-
-        function checkForUpdates() {
-            // Check current version from server
-            google.script.run.withSuccessHandler(serverVersion => {
-                if (serverVersion && serverVersion !== localDataVersion) {
-                    console.log("New data detected:", serverVersion);
-                    showToast("新しいデータが見つかりました。更新しています...", false);
-                    reloadData(true);
-                }
-            }).checkDataVersion();
-        }
-
-        // ... loadUiConfig ...
-        // ... switchMode ...
-
-        function checkLogin() {
-            const savedName = localStorage.getItem(STAFF_CACHE_KEY);
-            if (savedName) {
-                currentStaffName = savedName;
-                document.getElementById('headerUserName').textContent = savedName + ' さん';
-                document.getElementById('loginModal').classList.add('hidden');
-
-                // Admin check
-
-
-                loadData(false);
-            } else {
-                document.getElementById('loginModal').classList.remove('hidden');
-            }
-        }
-
-        function loadUiConfig() {
-            google.script.run.withSuccessHandler(config => {
-                uiConfig = config;
-                // Apply default placeholder based on current mode defaults or just wait for switch
-                if (currentReportMode === 'daily' && uiConfig.dailyPlaceholder) {
-                    document.getElementById('reportInput').placeholder = uiConfig.dailyPlaceholder;
-                }
-            }).getUiConfig();
-        }
-
-        function switchMode(mode) {
-            currentReportMode = mode;
-            const tabDaily = document.getElementById('tabDaily');
-            const tabAccident = document.getElementById('tabAccident');
-            const hintBtn = document.getElementById('hintBtn');
-            const input = document.getElementById('reportInput');
-            const typeSelector = document.getElementById('accidentTypeSelector');
-            const imageSection = document.getElementById('imageUploadSection');
-
-            // UI Toggle
-            if (mode === 'daily') {
-                tabDaily.className = "flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors";
-                tabAccident.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
-
-                document.getElementById('endTimeContainer').classList.remove('hidden');
-                document.getElementById('familySelectorContainer').classList.add('hidden'); // Hide Family Selector
-                document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
-
-                hintBtn.classList.add('hidden');
-                typeSelector.classList.add('hidden');
-
-                if (imageSection) imageSection.classList.remove('hidden');
-
-                input.placeholder = uiConfig.dailyPlaceholder || "";
-
-                // Show/Hide results based on previous state
-                const hasDailyResult = document.getElementById('internalResult').value !== '';
-                if (hasDailyResult) {
-                    document.getElementById('resultArea').classList.remove('hidden');
-                    document.getElementById('saveBtnContainer').classList.remove('hidden');
-                } else {
-                    document.getElementById('resultArea').classList.add('hidden');
-                    document.getElementById('saveBtnContainer').classList.add('hidden');
-                }
-                document.getElementById('accidentResultArea').classList.add('hidden');
-
-            } else {
-                tabDaily.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
-                tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
-
-                document.getElementById('endTimeContainer').classList.add('hidden');
-                document.getElementById('familySelectorContainer').classList.remove('hidden'); // Show Family Selector
-                document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
-
-                hintBtn.classList.remove('hidden');
-                typeSelector.classList.remove('hidden');
-
-                if (imageSection) imageSection.classList.add('hidden');
-
-                // Update Placeholder based on selection
-                updateAccidentPlaceholder();
-
-                document.getElementById('resultArea').classList.add('hidden');
-
-                const hasAccidentResult = document.getElementById('accOccurrenceTime').value !== '';
-                if (hasAccidentResult) {
-                    document.getElementById('accidentResultArea').classList.remove('hidden');
-                    document.getElementById('saveBtnContainer').classList.remove('hidden');
-                } else {
-                    document.getElementById('accidentResultArea').classList.add('hidden');
-                    document.getElementById('saveBtnContainer').classList.add('hidden');
-                }
-            }
-        }
-
-        function updateAccidentPlaceholder() {
-            if (currentReportMode !== 'accident') return;
-            // Always use Accident placeholder even for Hiyarihatto
-            const input = document.getElementById('reportInput');
-            input.placeholder = uiConfig.accidentPlaceholder || "";
-        }
-
-        function toggleHint() {
-            const modal = document.getElementById('hintModal');
-            if (modal.classList.contains('hidden')) {
-                let content = uiConfig.accidentHint || "Loading...";
-                let title = "事故報告書の書き方ヒント";
-
-                // If in accident mode and Hiyarihatto is selected, use Hiyari placeholder text as hint
-                if (currentReportMode === 'accident') {
-                    const typeRadio = document.querySelector('input[name="accType"]:checked');
-                    if (typeRadio && typeRadio.value === 'ヒヤリハット') {
-                        content = uiConfig.hiyariPlaceholder || "ヒヤリハットの状況を入力してください...";
-                        title = "ヒヤリハットの書き方ヒント";
+            function startVersionPolling() {
+                // First check for new CSV import on load
+                google.script.run.withSuccessHandler(res => {
+                    console.log("CSV Auto-Import Check:", res);
+                    if (res && res.startsWith("Imported")) {
+                        showToast("新しいデータを読み込みました", false);
+                        reloadData(true); // Force reload immediately
+                    } else {
+                        checkForUpdates(); // Continue with normal check
                     }
+                }).checkAndImportLatestCsv();
+
+                setInterval(checkForUpdates, 60000); // Check every minute
+            }
+
+            function checkForUpdates() {
+                // Check current version from server
+                google.script.run.withSuccessHandler(serverVersion => {
+                    if (serverVersion && serverVersion !== localDataVersion) {
+                        console.log("New data detected:", serverVersion);
+                        showToast("新しいデータが見つかりました。更新しています...", false);
+                        reloadData(true);
+                    }
+                }).checkDataVersion();
+            }
+
+            // ... loadUiConfig ...
+            // ... switchMode ...
+
+            function checkLogin() {
+                const savedName = localStorage.getItem(STAFF_CACHE_KEY);
+                if (savedName) {
+                    currentStaffName = savedName;
+                    document.getElementById('headerUserName').textContent = savedName + ' さん';
+                    document.getElementById('loginModal').classList.add('hidden');
+
+                    // Admin check
+
+
+                    loadData(false);
+                } else {
+                    document.getElementById('loginModal').classList.remove('hidden');
+                }
+            }
+
+            function loadUiConfig() {
+                google.script.run.withSuccessHandler(config => {
+                    uiConfig = config;
+                    // Apply default placeholder based on current mode defaults or just wait for switch
+                    if (currentReportMode === 'daily' && uiConfig.dailyPlaceholder) {
+                        document.getElementById('reportInput').placeholder = uiConfig.dailyPlaceholder;
+                    }
+                }).getUiConfig();
+            }
+
+            function openSettings() {
+                const modal = document.getElementById('settingsModal');
+
+                // 1. Setup Admin Area visibility
+                const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
+                const adminArea = document.getElementById('adminSettingsArea');
+
+                if (isAdmin === '1' || isAdmin === 'true') {
+                    adminArea.classList.remove('hidden');
+                    // Load current setting if Admin
+                    // To prevent flickering when reopening, only load if placeholder or empty
+                    const input = document.getElementById('settingLwTargetId');
+                    if (input.value === "" || input.value === "Loading..." || input.value === "Error") {
+                        input.value = "Loading...";
+                        google.script.run.withSuccessHandler(id => {
+                            input.value = id;
+                        }).withFailureHandler(e => {
+                            input.value = "Error";
+                        }).getLwTargetId();
+                    }
+                } else {
+                    adminArea.classList.add('hidden');
                 }
 
-                document.getElementById('hintContent').textContent = content;
-                document.getElementById('hintModalTitle').textContent = title;
+                // 2. Setup Font Size Radio Selection
+                // Restore old logic: check the radio corresponding to current 'app_text_size'
+                const current = localStorage.getItem('app_text_size') || 'small';
+                const radio = document.querySelector(`input[name="textSize"][value="${current}"]`);
+                if (radio) radio.checked = true;
+
                 modal.classList.remove('hidden');
                 setTimeout(() => modal.classList.remove('opacity-0'), 10);
-            } else {
+            }
+
+            // Restore applyTextSize for Radio Button change event
+            function applyTextSize(size) {
+                document.documentElement.setAttribute('data-text-size', size);
+                localStorage.setItem('app_text_size', size);
+            }
+
+            function closeSettings() {
+                const modal = document.getElementById('settingsModal');
                 modal.classList.add('opacity-0');
                 setTimeout(() => modal.classList.add('hidden'), 300);
             }
-        }
 
-        function doLogin() {
-            const email = document.getElementById('loginEmail').value;
-            const pass = document.getElementById('loginPass').value;
-            const btn = document.getElementById('loginBtn');
-            const err = document.getElementById('loginError');
+            function saveSettings() {
+                const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
 
-            if (!email || !pass) {
-                err.textContent = "入力してください";
-                return;
+                // Only save LineWorks ID if Admin and visible
+                if (isAdmin === '1' || isAdmin === 'true') {
+                    const newId = document.getElementById('settingLwTargetId').value;
+                    if (newId && newId !== "Loading..." && newId !== "Error") {
+                        const btn = document.querySelector('#settingsModal button[onclick="saveSettings()"]');
+                        const originalText = btn.textContent;
+                        btn.disabled = true;
+                        btn.textContent = "保存中...";
+
+                        google.script.run.withSuccessHandler(res => {
+                            btn.disabled = false;
+                            btn.textContent = originalText;
+                            if (res.success) {
+                                showToast(res.message);
+                                closeSettings();
+                            } else {
+                                showToast("保存失敗: " + res, true);
+                            }
+                        }).withFailureHandler(e => {
+                            btn.disabled = false;
+                            btn.textContent = originalText;
+                            showToast("Error: " + e.message, true);
+                        }).saveLwTargetId(newId);
+                        return; // Async save handles close
+                    }
+                }
+
+                // If not admin or no changes to admin settings, just close
+                showToast("設定を保存しました");
+                closeSettings();
             }
 
-            btn.disabled = true;
-            btn.textContent = "確認中...";
-            err.textContent = "";
+            function switchMode(mode) {
+                currentReportMode = mode;
+                const tabDaily = document.getElementById('tabDaily');
+                const tabAccident = document.getElementById('tabAccident');
+                const hintBtn = document.getElementById('hintBtn');
+                const input = document.getElementById('reportInput');
+                const typeSelector = document.getElementById('accidentTypeSelector');
+                const imageSection = document.getElementById('imageUploadSection');
 
-            google.script.run.withSuccessHandler(res => {
-                btn.disabled = false;
-                btn.textContent = "ログイン";
-                if (res.success) {
-                    currentStaffName = res.name;
-                    localStorage.setItem(STAFF_CACHE_KEY, res.name);
+                // UI Toggle
+                if (mode === 'daily') {
+                    tabDaily.className = "flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors";
+                    tabAccident.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
 
-                    // Admin Handling
-                    if (res.isAdmin) {
-                        localStorage.setItem(STAFF_ADMIN_KEY, 'true');
+                    document.getElementById('endTimeContainer').classList.remove('hidden');
+                    document.getElementById('familySelectorContainer').classList.add('hidden'); // Hide Family Selector
+                    document.getElementById('generateBtn').querySelector('span').textContent = '日報を作成する';
+
+                    hintBtn.classList.add('hidden');
+                    typeSelector.classList.add('hidden');
+
+                    if (imageSection) imageSection.classList.remove('hidden');
+
+                    input.placeholder = uiConfig.dailyPlaceholder || "";
+
+                    // Show/Hide results based on previous state
+                    const hasDailyResult = document.getElementById('internalResult').value !== '';
+                    if (hasDailyResult) {
+                        document.getElementById('resultArea').classList.remove('hidden');
+                        document.getElementById('saveBtnContainer').classList.remove('hidden');
                     } else {
-                        localStorage.removeItem(STAFF_ADMIN_KEY);
+                        document.getElementById('resultArea').classList.add('hidden');
+                        document.getElementById('saveBtnContainer').classList.add('hidden');
                     }
+                    document.getElementById('accidentResultArea').classList.add('hidden');
 
-                    document.getElementById('headerUserName').textContent = res.name + ' さん';
-                    document.getElementById('loginModal').classList.add('hidden');
-                    loadData(false);
                 } else {
-                    err.textContent = res.message;
-                }
-            }).withFailureHandler(e => {
-                btn.disabled = false;
-                btn.textContent = "ログイン";
-                err.textContent = "Error: " + e.message;
-            }).verifyLogin(email, pass);
-        }
+                    tabDaily.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
+                    tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
 
-        function doLogout() {
-            localStorage.removeItem(STAFF_CACHE_KEY);
-            localStorage.removeItem(STAFF_ADMIN_KEY);
-            location.reload();
-        }
+                    document.getElementById('endTimeContainer').classList.add('hidden');
+                    document.getElementById('familySelectorContainer').classList.remove('hidden'); // Show Family Selector
+                    document.getElementById('generateBtn').querySelector('span').textContent = '事故報告書を作成する';
 
+                    hintBtn.classList.remove('hidden');
+                    typeSelector.classList.remove('hidden');
 
+                    if (imageSection) imageSection.classList.add('hidden');
 
-        function populateHours() {
-            const hours = [];
-            for (let i = 0; i < 24; i++) {
-                const val = i.toString().padStart(2, '0');
-                hours.push(`<option value="${val}">${val}</option>`);
-            }
-            document.getElementById('startHour').innerHTML = hours.join('');
-            document.getElementById('endHour').innerHTML = hours.join('');
-            // Set default
-            document.getElementById('startHour').value = "09";
-            document.getElementById('endHour').value = "11";
-        }
+                    // Update Placeholder based on selection
+                    updateAccidentPlaceholder();
 
-        // ... encryption ...
-        function encrypt(text) {
-            try {
-                const chars = text.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY));
-                return btoa(unescape(encodeURIComponent(chars.join(''))));
-            } catch (e) { console.error(e); return null; }
-        }
-        function decrypt(encoded) {
-            try {
-                const chars = decodeURIComponent(escape(atob(encoded))).split('');
-                return chars.map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY)).join('');
-            } catch (e) { console.error(e); return null; }
-        }
+                    document.getElementById('resultArea').classList.add('hidden');
 
-        // ... data loading ...
-        function reloadData(force) { loadData(force); }
-        function loadData(force = false) {
-            const container = document.getElementById('customerList');
-            // Only show spinner if we don't have data or forcing
-            if (force || allCustomers.length === 0) {
-                container.innerHTML = '<div class="flex justify-center py-8"><div class="w-8 h-8 rounded-full border-4 border-gray-200 loading-spinner"></div></div>';
-            }
-
-            const refreshBtn = document.getElementById('refreshBtn');
-            if (refreshBtn) refreshBtn.classList.add('animate-spin');
-
-            if (!force) {
-                const cached = localStorage.getItem(CACHE_KEY);
-                if (cached) {
-                    const decrypted = decrypt(cached);
-                    if (decrypted) {
-                        try {
-                            const data = JSON.parse(decrypted);
-                            onDataLoaded(data, true);
-                            if (refreshBtn) refreshBtn.classList.remove('animate-spin');
-                            return;
-                        } catch (e) { console.error("Cache parse error", e); }
+                    const hasAccidentResult = document.getElementById('accOccurrenceTime').value !== '';
+                    if (hasAccidentResult) {
+                        document.getElementById('accidentResultArea').classList.remove('hidden');
+                        document.getElementById('saveBtnContainer').classList.remove('hidden');
+                    } else {
+                        document.getElementById('accidentResultArea').classList.add('hidden');
+                        document.getElementById('saveBtnContainer').classList.add('hidden');
                     }
                 }
             }
 
-            google.script.run.withSuccessHandler((data) => {
-                try {
-                    const json = JSON.stringify(data);
-                    const encrypted = encrypt(json);
-                    if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
+            function updateAccidentPlaceholder() {
+                if (currentReportMode !== 'accident') return;
+                // Always use Accident placeholder even for Hiyarihatto
+                const input = document.getElementById('reportInput');
+                input.placeholder = uiConfig.accidentPlaceholder || "";
+            }
 
-                    onDataLoaded(data, false);
-                    if (force) showToast('データを更新しました');
-                } catch (e) {
-                    console.error("Success Handler Error:", e);
-                    showToast("データ処理エラー: " + e.message, true);
-                } finally {
-                    if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+            function toggleHint() {
+                const modal = document.getElementById('hintModal');
+                if (modal.classList.contains('hidden')) {
+                    let content = uiConfig.accidentHint || "Loading...";
+                    let title = "事故報告書の書き方ヒント";
+
+                    // If in accident mode and Hiyarihatto is selected, use Hiyari placeholder text as hint
+                    if (currentReportMode === 'accident') {
+                        const typeRadio = document.querySelector('input[name="accType"]:checked');
+                        if (typeRadio && typeRadio.value === 'ヒヤリハット') {
+                            content = uiConfig.hiyariPlaceholder || "ヒヤリハットの状況を入力してください...";
+                            title = "ヒヤリハットの書き方ヒント";
+                        }
+                    }
+
+                    document.getElementById('hintContent').textContent = content;
+                    document.getElementById('hintModalTitle').textContent = title;
+                    modal.classList.remove('hidden');
+                    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+                } else {
+                    modal.classList.add('opacity-0');
+                    setTimeout(() => modal.classList.add('hidden'), 300);
                 }
-            }).withFailureHandler((e) => {
-                onError(e);
-                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
-            }).getData();
-        }
-
-        function onDataLoaded(data, fromCache) {
-            allCustomers = data.customers;
-            if (data.version) {
-                localDataVersion = data.version;
-            }
-            const select = document.getElementById('cityFilter');
-            select.innerHTML = '<option value="">全ての地域</option>';
-            populateCityFilter(data.cities);
-            renderCustomers(allCustomers);
-        }
-        function onError(e) { showToast('Error: ' + e.message, true); }
-        function populateCityFilter(cities) {
-            const select = document.getElementById('cityFilter');
-            cities.forEach(city => {
-                const option = document.createElement('option');
-                option.value = city;
-                option.textContent = city;
-                select.appendChild(option);
-            });
-        }
-        function renderCustomers(customers) {
-            const container = document.getElementById('customerList');
-            container.innerHTML = '';
-
-            if (customers.length === 0) {
-                container.innerHTML = '<div class="text-center text-gray-400 py-8">該当する顧客がいません</div>';
-                return;
             }
 
-            customers.forEach(c => {
-                const el = document.createElement('div');
-                el.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:shadow-md transition-shadow active:bg-gray-50';
-                el.onclick = () => openModal(c);
-                el.innerHTML = `
+            function doLogin() {
+                const email = document.getElementById('loginEmail').value;
+                const pass = document.getElementById('loginPass').value;
+                const btn = document.getElementById('loginBtn');
+                const err = document.getElementById('loginError');
+
+                if (!email || !pass) {
+                    err.textContent = "入力してください";
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = "確認中...";
+                err.textContent = "";
+
+                google.script.run.withSuccessHandler(res => {
+                    btn.disabled = false;
+                    btn.textContent = "ログイン";
+                    if (res.success) {
+                        currentStaffName = res.name;
+                        localStorage.setItem(STAFF_CACHE_KEY, res.name);
+
+                        // Admin Handling
+                        if (res.isAdmin) {
+                            localStorage.setItem(STAFF_ADMIN_KEY, 'true');
+                        } else {
+                            localStorage.removeItem(STAFF_ADMIN_KEY);
+                        }
+
+                        document.getElementById('headerUserName').textContent = res.name + ' さん';
+                        document.getElementById('loginModal').classList.add('hidden');
+                        loadData(false);
+                    } else {
+                        err.textContent = res.message;
+                    }
+                }).withFailureHandler(e => {
+                    btn.disabled = false;
+                    btn.textContent = "ログイン";
+                    err.textContent = "Error: " + e.message;
+                }).verifyLogin(email, pass);
+            }
+
+            function doLogout() {
+                localStorage.removeItem(STAFF_CACHE_KEY);
+                localStorage.removeItem(STAFF_ADMIN_KEY);
+                location.reload();
+            }
+
+
+
+            function populateHours() {
+                const hours = [];
+                for (let i = 0; i < 24; i++) {
+                    const val = i.toString().padStart(2, '0');
+                    hours.push(`<option value="${val}">${val}</option>`);
+                }
+                document.getElementById('startHour').innerHTML = hours.join('');
+                document.getElementById('endHour').innerHTML = hours.join('');
+                // Set default
+                document.getElementById('startHour').value = "09";
+                document.getElementById('endHour').value = "11";
+            }
+
+            // ... encryption ...
+            function encrypt(text) {
+                try {
+                    const chars = text.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY));
+                    return btoa(unescape(encodeURIComponent(chars.join(''))));
+                } catch (e) { console.error(e); return null; }
+            }
+            function decrypt(encoded) {
+                try {
+                    const chars = decodeURIComponent(escape(atob(encoded))).split('');
+                    return chars.map(c => String.fromCharCode(c.charCodeAt(0) ^ ENC_KEY)).join('');
+                } catch (e) { console.error(e); return null; }
+            }
+
+            // ... data loading ...
+            function reloadData(force) { loadData(force); }
+            function loadData(force = false) {
+                const container = document.getElementById('customerList');
+                // Only show spinner if we don't have data or forcing
+                if (force || allCustomers.length === 0) {
+                    container.innerHTML = '<div class="flex justify-center py-8"><div class="w-8 h-8 rounded-full border-4 border-gray-200 loading-spinner"></div></div>';
+                }
+
+                const refreshBtn = document.getElementById('refreshBtn');
+                if (refreshBtn) refreshBtn.classList.add('animate-spin');
+
+                if (!force) {
+                    const cached = localStorage.getItem(CACHE_KEY);
+                    if (cached) {
+                        const decrypted = decrypt(cached);
+                        if (decrypted) {
+                            try {
+                                const data = JSON.parse(decrypted);
+                                onDataLoaded(data, true);
+                                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                                return;
+                            } catch (e) { console.error("Cache parse error", e); }
+                        }
+                    }
+                }
+
+                google.script.run.withSuccessHandler((data) => {
+                    try {
+                        const json = JSON.stringify(data);
+                        const encrypted = encrypt(json);
+                        if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
+
+                        onDataLoaded(data, false);
+                        if (force) showToast('データを更新しました');
+                    } catch (e) {
+                        console.error("Success Handler Error:", e);
+                        showToast("データ処理エラー: " + e.message, true);
+                    } finally {
+                        if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                    }
+                }).withFailureHandler((e) => {
+                    onError(e);
+                    if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                }).getData();
+            }
+
+            function onDataLoaded(data, fromCache) {
+                allCustomers = data.customers;
+                if (data.version) {
+                    localDataVersion = data.version;
+                }
+                const select = document.getElementById('cityFilter');
+                select.innerHTML = '<option value="">全ての地域</option>';
+                populateCityFilter(data.cities);
+                renderCustomers(allCustomers);
+            }
+            function onError(e) { showToast('Error: ' + e.message, true); }
+            function populateCityFilter(cities) {
+                const select = document.getElementById('cityFilter');
+                cities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    select.appendChild(option);
+                });
+            }
+            function renderCustomers(customers) {
+                const container = document.getElementById('customerList');
+                container.innerHTML = '';
+
+                if (customers.length === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-400 py-8">該当する顧客がいません</div>';
+                    return;
+                }
+
+                customers.forEach(c => {
+                    const el = document.createElement('div');
+                    el.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:shadow-md transition-shadow active:bg-gray-50';
+                    el.onclick = () => openModal(c);
+                    el.innerHTML = `
                     <div class="flex-grow">
                         <h3 class="font-bold text-gray-800 text-lg">${c.name}</h3>
                         <p class="text-sm text-gray-500 flex items-center gap-1">
@@ -849,59 +993,59 @@
                         </div>
                     </div>
                 `;
-                container.appendChild(el);
-            });
-        }
-        function filterCustomers() {
-            const city = document.getElementById('cityFilter').value;
-            const search = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = allCustomers.filter(c => {
-                const matchesCity = city ? c.city === city : true;
-                const matchesSearch = c.name.toLowerCase().includes(search);
-                return matchesCity && matchesSearch;
-            });
-            renderCustomers(filtered);
-        }
+                    container.appendChild(el);
+                });
+            }
+            function filterCustomers() {
+                const city = document.getElementById('cityFilter').value;
+                const search = document.getElementById('searchInput').value.toLowerCase();
+                const filtered = allCustomers.filter(c => {
+                    const matchesCity = city ? c.city === city : true;
+                    const matchesSearch = c.name.toLowerCase().includes(search);
+                    return matchesCity && matchesSearch;
+                });
+                renderCustomers(filtered);
+            }
 
-        // Customer Detail Logic
-        function showCustomerDetail(id) {
-            const c = allCustomers.find(x => x.id === id);
-            if (!c) return;
+            // Customer Detail Logic
+            function showCustomerDetail(id) {
+                const c = allCustomers.find(x => x.id === id);
+                if (!c) return;
 
-            // Family
-            const famContainer = document.getElementById('detailFamilyList');
-            if (c.family && c.family.length > 0) {
-                famContainer.innerHTML = c.family.map(f => `
+                // Family
+                const famContainer = document.getElementById('detailFamilyList');
+                if (c.family && c.family.length > 0) {
+                    famContainer.innerHTML = c.family.map(f => `
                     <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
                         <div class="font-bold text-gray-800">${f.name} <span class="text-xs font-normal text-gray-500 ml-1">${f.dob}</span></div>
                         <div class="text-xs text-red-600 mt-1">アレルギー: ${f.allergy || 'なし'}</div>
                         <div class="text-xs text-gray-600 mt-0.5 text-wrap break-words">${f.info || ''}</div>
                     </div>
                  `).join('');
-            } else {
-                famContainer.innerHTML = '<p class="text-gray-400 text-xs">登録なし</p>';
-            }
+                } else {
+                    famContainer.innerHTML = '<p class="text-gray-400 text-xs">登録なし</p>';
+                }
 
-            // Customer Details
-            const table = document.getElementById('detailCustomerTable');
-            let html = '';
-            if (c.details && Array.isArray(c.details)) {
-                c.details.forEach(item => {
-                    const key = item.key;
-                    const val = item.value;
+                // Customer Details
+                const table = document.getElementById('detailCustomerTable');
+                let html = '';
+                if (c.details && Array.isArray(c.details)) {
+                    c.details.forEach(item => {
+                        const key = item.key;
+                        const val = item.value;
 
-                    // Exclude ID and Password (already filtered in backend but safe check)
-                    if (key === '顧客ID' || key === 'パスワード' || key === 'Customer ID') return;
+                        // Exclude ID and Password (already filtered in backend but safe check)
+                        if (key === '顧客ID' || key === 'パスワード' || key === 'Customer ID') return;
 
-                    let content = `<span class="break-words">${val}</span>`;
+                        let content = `<span class="break-words">${val}</span>`;
 
-                    // Address Map Logic
-                    if (key.includes('住所') && !key.includes('2') && val) {
-                        let mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val)}`;
-                        if (c.lat && c.lng) {
-                            mapUrl = `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`;
-                        }
-                        content = `
+                        // Address Map Logic
+                        if (key.includes('住所') && !key.includes('2') && val) {
+                            let mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val)}`;
+                            if (c.lat && c.lng) {
+                                mapUrl = `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`;
+                            }
+                            content = `
                             <div class="flex items-start gap-2">
                                 <span class="break-words flex-grow">${val}</span>
                                 <a href="${mapUrl}" target="_blank" class="flex-shrink-0 px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200 flex items-center gap-1">
@@ -910,10 +1054,10 @@
                                 </a>
                             </div>
                          `;
-                    }
-                    // Email Logic
-                    else if (key.includes('メール') && val) {
-                        content = `
+                        }
+                        // Email Logic
+                        else if (key.includes('メール') && val) {
+                            content = `
                             <div class="flex items-start gap-2">
                                 <span class="break-words flex-grow">${val}</span>
                                 <a href="mailto:${val}" target="_top" class="flex-shrink-0 px-2 py-1 bg-teal-100 text-teal-700 text-xs rounded hover:bg-teal-200 flex items-center gap-1">
@@ -922,13 +1066,13 @@
                                 </a>
                             </div>
                          `;
-                    }
-                    // Phone Logic
-                    else if (key.includes('電話') && val) {
-                        // Clean phone number for tel link (remove non-digits?)
-                        // Usually tel: accepts hyphens, but let's keep it robust.
-                        // But simple is fine: tel:${val} usually works if format is standard.
-                        content = `
+                        }
+                        // Phone Logic
+                        else if (key.includes('電話') && val) {
+                            // Clean phone number for tel link (remove non-digits?)
+                            // Usually tel: accepts hyphens, but let's keep it robust.
+                            // But simple is fine: tel:${val} usually works if format is standard.
+                            content = `
                             <div class="flex items-start gap-2">
                                 <span class="break-words flex-grow">${val}</span>
                                 <a href="tel:${val}" target="_top" class="flex-shrink-0 px-2 py-1 bg-green-100 text-green-700 text-xs rounded hover:bg-green-200 flex items-center gap-1">
@@ -937,121 +1081,121 @@
                                 </a>
                             </div>
                          `;
-                    }
+                        }
 
-                    html += `
+                        html += `
                         <div class="border-b border-gray-100 pb-2">
                             <div class="text-xs text-gray-500 mb-0.5">${key}</div>
                             <div class="text-gray-800 text-sm leading-relaxed">${content}</div>
                         </div>
                      `;
-                });
-            } else if (c.details) {
-                // Fallback for cached old data format
-                for (const [key, val] of Object.entries(c.details)) {
-                    // Same logic as above for fallback
-                    if (key === '顧客ID' || key === 'パスワード' || key === 'Customer ID') continue;
-                    let content = `<span class="break-words">${val}</span>`;
-                    if (key.includes('住所') && !key.includes('2')) {
-                        /* Minimal Map fallback logic could go here or just skip for fallback */
-                        content = `<span class="break-words">${val}</span>`;
+                    });
+                } else if (c.details) {
+                    // Fallback for cached old data format
+                    for (const [key, val] of Object.entries(c.details)) {
+                        // Same logic as above for fallback
+                        if (key === '顧客ID' || key === 'パスワード' || key === 'Customer ID') continue;
+                        let content = `<span class="break-words">${val}</span>`;
+                        if (key.includes('住所') && !key.includes('2')) {
+                            /* Minimal Map fallback logic could go here or just skip for fallback */
+                            content = `<span class="break-words">${val}</span>`;
+                        }
+                        html += `
+                        <div class="border-b border-gray-100 pb-2">
+                            <div class="text-xs text-gray-500 mb-0.5">${key}</div>
+                            <div class="text-gray-800 text-sm leading-relaxed">${content}</div>
+                        </div>
+                     `;
                     }
-                    html += `
-                        <div class="border-b border-gray-100 pb-2">
-                            <div class="text-xs text-gray-500 mb-0.5">${key}</div>
-                            <div class="text-gray-800 text-sm leading-relaxed">${content}</div>
-                        </div>
-                     `;
                 }
-            }
-            table.innerHTML = html;
+                table.innerHTML = html;
 
-            const modal = document.getElementById('customerDetailModal');
-            modal.classList.remove('hidden');
-            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+                const modal = document.getElementById('customerDetailModal');
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
 
-            // Load History
-            loadCustomerHistory(id);
-        }
-
-        function closeCustomerDetail() {
-            const modal = document.getElementById('customerDetailModal');
-            modal.classList.add('opacity-0');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                document.getElementById('detailReportTimeline').innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>';
-                document.getElementById('historyLoading').classList.add('hidden');
-            }, 300);
-        }
-
-        // Cache Globals
-        let currentDetailId = null;
-        const historyCache = {};
-
-        function loadCustomerHistory(customerId, forceRefresh = false) {
-            currentDetailId = customerId;
-            const timeline = document.getElementById('detailReportTimeline');
-            const loader = document.getElementById('historyLoading');
-
-            // Use Cache if available and not forced
-            if (!forceRefresh && historyCache[customerId]) {
-                renderHistoryTimeline(historyCache[customerId]);
-                return;
+                // Load History
+                loadCustomerHistory(id);
             }
 
-            timeline.innerHTML = '';
-            loader.classList.remove('hidden');
+            function closeCustomerDetail() {
+                const modal = document.getElementById('customerDetailModal');
+                modal.classList.add('opacity-0');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    document.getElementById('detailReportTimeline').innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>';
+                    document.getElementById('historyLoading').classList.add('hidden');
+                }, 300);
+            }
 
-            google.script.run.withSuccessHandler(reports => {
-                loader.classList.add('hidden');
-                historyCache[customerId] = reports || []; // Cache Result
+            // Cache Globals
+            let currentDetailId = null;
+            const historyCache = {};
 
-                if (!reports || reports.length === 0) {
-                    timeline.innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴はありません</div>';
+            function loadCustomerHistory(customerId, forceRefresh = false) {
+                currentDetailId = customerId;
+                const timeline = document.getElementById('detailReportTimeline');
+                const loader = document.getElementById('historyLoading');
+
+                // Use Cache if available and not forced
+                if (!forceRefresh && historyCache[customerId]) {
+                    renderHistoryTimeline(historyCache[customerId]);
                     return;
                 }
-                renderHistoryTimeline(reports);
-            }).withFailureHandler(e => {
-                loader.classList.add('hidden');
-                timeline.innerHTML = `<div class="text-xs text-red-400 py-4 pl-4">読み込みエラー: ${e.message}</div>`;
-            }).getCustomerReports(customerId);
-        }
 
-        function renderHistoryTimeline(reports) {
-            const timeline = document.getElementById('detailReportTimeline');
-            let html = '';
+                timeline.innerHTML = '';
+                loader.classList.remove('hidden');
 
-            reports.forEach((r, idx) => {
-                const isAccident = r.type === 'accident';
+                google.script.run.withSuccessHandler(reports => {
+                    loader.classList.add('hidden');
+                    historyCache[customerId] = reports || []; // Cache Result
 
-                let title = '保育日報';
-                let colorClass = 'bg-blue-500';
-
-                if (isAccident) {
-                    title = r.subtype || '事故報告';
-                    if (title.includes('ヒヤリ')) {
-                        colorClass = 'bg-orange-400';
-                    } else {
-                        colorClass = 'bg-red-500';
+                    if (!reports || reports.length === 0) {
+                        timeline.innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴はありません</div>';
+                        return;
                     }
-                }
+                    renderHistoryTimeline(reports);
+                }).withFailureHandler(e => {
+                    loader.classList.add('hidden');
+                    timeline.innerHTML = `<div class="text-xs text-red-400 py-4 pl-4">読み込みエラー: ${e.message}</div>`;
+                }).getCustomerReports(customerId);
+            }
 
-                const dateStr = r.timestamp.split(' ')[0];
-                const timeStr = r.timestamp.split(' ')[1] || '';
-                const uid = `rep-${idx}`;
+            function renderHistoryTimeline(reports) {
+                const timeline = document.getElementById('detailReportTimeline');
+                let html = '';
 
-                // Tabs Buttons
-                let tabsHtml = `
+                reports.forEach((r, idx) => {
+                    const isAccident = r.type === 'accident';
+
+                    let title = '保育日報';
+                    let colorClass = 'bg-blue-500';
+
+                    if (isAccident) {
+                        title = r.subtype || '事故報告';
+                        if (title.includes('ヒヤリ')) {
+                            colorClass = 'bg-orange-400';
+                        } else {
+                            colorClass = 'bg-red-500';
+                        }
+                    }
+
+                    const dateStr = r.timestamp.split(' ')[0];
+                    const timeStr = r.timestamp.split(' ')[1] || '';
+                    const uid = `rep-${idx}`;
+
+                    // Tabs Buttons
+                    let tabsHtml = `
                     <button onclick="switchReportTab('${uid}', 'original')" id="btn-${uid}-original" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">原本</button>
                     <button onclick="switchReportTab('${uid}', 'internal')" id="btn-${uid}-internal" class="px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600">社内向け</button>
                 `;
 
-                // Add Customer Tab only for non-accidents
-                if (!isAccident) {
-                    tabsHtml += `<button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>`;
-                }
+                    // Add Customer Tab only for non-accidents
+                    if (!isAccident) {
+                        tabsHtml += `<button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>`;
+                    }
 
-                html += `
+                    html += `
                     <div class="relative pl-6 pb-6 group transition-all duration-300 hover:pl-7">
                         <!-- Dot -->
                         <div class="absolute -left-[9px] top-1 w-5 h-5 rounded-full border-4 border-white ${colorClass} shadow-sm z-10"></div>
@@ -1085,533 +1229,533 @@
                         </div>
                     </div>
                 `;
-            });
-
-            timeline.innerHTML = html;
-        }
-
-        // --- History Modal Functions ---
-        function showCustomerHistory(id) {
-            const modal = document.getElementById('customerHistoryModal');
-            modal.classList.remove('hidden');
-            setTimeout(() => modal.classList.remove('opacity-0'), 10);
-            /* Reset visual state */
-            const inner = modal.querySelector('div');
-            inner.classList.remove('scale-95');
-            inner.classList.add('transition-all');
-
-            loadCustomerHistory(id);
-        }
-
-        function closeCustomerHistory() {
-            const modal = document.getElementById('customerHistoryModal');
-            modal.classList.add('opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 300);
-        }
-
-        function switchReportTab(uid, type) {
-            // Hide all contents
-            ['original', 'internal', 'customer'].forEach(t => {
-                const c = document.getElementById(`content-${uid}-${t}`);
-                if (c) c.classList.add('hidden');
-
-                const btn = document.getElementById(`btn-${uid}-${t}`);
-                // Reset button styles
-                if (btn) btn.className = 'px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors';
-            });
-
-            // Show selected
-            const target = document.getElementById(`content-${uid}-${type}`);
-            if (target) target.classList.remove('hidden');
-
-            const activeBtn = document.getElementById(`btn-${uid}-${type}`);
-            if (activeBtn) activeBtn.className = 'px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600';
-        }
-
-        // Modal Logic
-        const modal = document.getElementById('reportModal');
-        const modalContent = modal.querySelector('div');
-
-        function calculateAge(dobStr) {
-            // "yyyy/MM/dd"
-            if (!dobStr) return "";
-            const parts = dobStr.split('/');
-            if (parts.length !== 3) return "";
-
-            const birthDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-            const today = new Date();
-
-            let years = today.getFullYear() - birthDate.getFullYear();
-            let months = today.getMonth() - birthDate.getMonth();
-
-            if (today.getDate() < birthDate.getDate()) {
-                months--;
-            }
-            if (months < 0) {
-                years--;
-                months += 12;
-            }
-
-            // To half-width digits
-            const toFullWidth = (n) => String(n).replace(/[0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + 0xFEE0));
-            // User example shows Full Width numbers: "０歳３か月"
-            // Wait, standard JP usage often uses half-width but user requested "０歳３か月".
-            // I will use full-width for numbers to match request.
-            return `（${toFullWidth(years)}歳${toFullWidth(months)}か月）`;
-        }
-
-        function openModal(customer) {
-            currentCustomer = customer;
-            document.getElementById('modalCustomerName').textContent = customer.name;
-            document.getElementById('modalCustomerAddress').textContent = customer.address;
-
-            // Populate Family Selector
-            const famSelect = document.getElementById('familySelector');
-            famSelect.innerHTML = '<option value="">(選択してください)</option>';
-            if (customer.family && customer.family.length > 0) {
-                customer.family.forEach((fam, idx) => {
-                    const opt = document.createElement('option');
-                    opt.value = idx;
-                    const ageStr = calculateAge(fam.dob);
-                    opt.textContent = fam.name + ' ' + ageStr;
-                    famSelect.appendChild(opt);
                 });
-            }
-            // Auto Select first child or reset
-            if (customer.family && customer.family.length > 0) {
-                famSelect.value = "0";
-            } else {
-                famSelect.value = "";
-            }
-            onFamilySelect(); // Updates UI based on selection
 
-            // Reset form
-            document.getElementById('startHour').value = "09";
-            document.getElementById('startMinute').value = "00";
-            autoSetEndTime();
-
-            document.getElementById('reportInput').value = '';
-
-            // Clear all results
-            document.getElementById('internalResult').value = '';
-            document.getElementById('customerResult').value = '';
-            document.getElementById('accOccurrenceTime').value = '';
-            document.getElementById('accLocation').value = '';
-            document.getElementById('accContent').value = '';
-            document.getElementById('accSituation').value = '';
-            document.getElementById('accResponse').value = '';
-            document.getElementById('accParentCorrespondence').value = '';
-            document.getElementById('accDiagnosis').value = '';
-            document.getElementById('accPrevention').value = '';
-
-            document.getElementById('warningsArea').classList.add('hidden');
-
-            // Default to Daily
-            switchMode('daily');
-
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                modal.classList.remove('opacity-0');
-                modalContent.classList.remove('translate-y-full');
-            }, 10);
-        }
-
-
-        function onFamilySelect() {
-            const idx = document.getElementById('familySelector').value;
-            const infoBox = document.getElementById('familyInfoBox');
-
-            // Always hide info box as requested ("No annotations", "Only list")
-            infoBox.classList.add('hidden');
-
-            if (idx === "") {
-                document.getElementById('accTargetName').value = '';
-                document.getElementById('accTargetDob').value = '';
-                return;
+                timeline.innerHTML = html;
             }
 
-            const fam = currentCustomer.family[idx];
-            if (fam) {
-                // Auto-fill Accident fields
-                document.getElementById('accTargetName').value = fam.name;
-                document.getElementById('accTargetDob').value = fam.dob;
-            }
-        }
+            // --- History Modal Functions ---
+            function showCustomerHistory(id) {
+                const modal = document.getElementById('customerHistoryModal');
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+                /* Reset visual state */
+                const inner = modal.querySelector('div');
+                inner.classList.remove('scale-95');
+                inner.classList.add('transition-all');
 
-        function closeModal() {
-            modal.classList.add('opacity-0');
-            modalContent.classList.add('translate-y-full');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                currentCustomer = null;
-            }, 300);
-        }
-
-        function autoSetEndTime() {
-            const sH = parseInt(document.getElementById('startHour').value);
-            const sM = document.getElementById('startMinute').value;
-            if (isNaN(sH)) return;
-            let eH = sH + 2;
-            if (eH >= 24) eH -= 24;
-            const pad = (n) => n.toString().padStart(2, '0');
-            document.getElementById('endHour').value = pad(eH);
-            document.getElementById('endMinute').value = sM;
-        }
-
-        function generateReport() {
-            const input = document.getElementById('reportInput').value;
-            const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
-
-            if (!input.trim()) {
-                showToast('メモを入力してください');
-                return;
+                loadCustomerHistory(id);
             }
 
-            const btn = document.getElementById('generateBtn');
-            const originalText = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div> 生成中...';
+            function closeCustomerHistory() {
+                const modal = document.getElementById('customerHistoryModal');
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
 
-            if (currentReportMode === 'daily') {
-                const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
-                google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
-                    showToast('Error: ' + e.message, true);
-                    btn.disabled = false;
-                    btn.innerHTML = originalText;
-                }).generateReportWithWarnings({
-                    text: input,
-                    start: start,
-                    end: end
+            function switchReportTab(uid, type) {
+                // Hide all contents
+                ['original', 'internal', 'customer'].forEach(t => {
+                    const c = document.getElementById(`content-${uid}-${t}`);
+                    if (c) c.classList.add('hidden');
+
+                    const btn = document.getElementById(`btn-${uid}-${t}`);
+                    // Reset button styles
+                    if (btn) btn.className = 'px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors';
                 });
-            } else {
-                // Accident Mode
-                google.script.run.withSuccessHandler(onAccidentReportGenerated).withFailureHandler(e => {
-                    showToast('Error: ' + e.message, true);
-                    btn.disabled = false;
-                    btn.innerHTML = originalText;
-                }).generateAccidentReport({
-                    text: input,
-                    start: start,
-                    end: "" // not used potentially
-                });
-            }
-        }
 
-        function onReportGenerated(result) {
-            const btn = document.getElementById('generateBtn');
-            btn.disabled = false;
-            btn.innerHTML = '<span>日報を作成する</span>';
+                // Show selected
+                const target = document.getElementById(`content-${uid}-${type}`);
+                if (target) target.classList.remove('hidden');
 
-            const warningsArea = document.getElementById('warningsArea');
-            if (result.warnings && result.warnings.length > 0) {
-                document.getElementById('warningsList').textContent = result.warnings.join(', ');
-                warningsArea.classList.remove('hidden');
-                warningsArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                warningsArea.classList.add('hidden');
-                document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const activeBtn = document.getElementById(`btn-${uid}-${type}`);
+                if (activeBtn) activeBtn.className = 'px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600';
             }
 
-            let customerText = result.customer;
-            if (currentStaffName) {
-                const parts = currentStaffName.split(/[\s　]+/);
-                if (parts.length > 0) {
-                    customerText += '\n\n' + parts[0];
+            // Modal Logic
+            const modal = document.getElementById('reportModal');
+            const modalContent = modal.querySelector('div');
+
+            function calculateAge(dobStr) {
+                // "yyyy/MM/dd"
+                if (!dobStr) return "";
+                const parts = dobStr.split('/');
+                if (parts.length !== 3) return "";
+
+                const birthDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                const today = new Date();
+
+                let years = today.getFullYear() - birthDate.getFullYear();
+                let months = today.getMonth() - birthDate.getMonth();
+
+                if (today.getDate() < birthDate.getDate()) {
+                    months--;
                 }
-            }
-
-            document.getElementById('internalResult').value = result.internal;
-            document.getElementById('customerResult').value = customerText;
-            document.getElementById('resultArea').classList.remove('hidden');
-            document.getElementById('saveBtnContainer').classList.remove('hidden'); // Show shared save button
-
-            updateCharCounts();
-        }
-
-        function onAccidentReportGenerated(result) {
-            const btn = document.getElementById('generateBtn');
-            btn.disabled = false;
-            btn.innerHTML = '<span>事故報告書を作成する</span>';
-
-            if (result.error) {
-                showToast(result.error, true);
-                return;
-            }
-
-            // Populate fields
-            document.getElementById('accOccurrenceTime').value = result.occurrenceTime || '';
-            document.getElementById('accLocation').value = result.location || '';
-            document.getElementById('accContent').value = result.accidentContent || '';
-            document.getElementById('accSituation').value = result.situation || '';
-            document.getElementById('accResponse').value = result.immediateResponse || '';
-            document.getElementById('accParentCorrespondence').value = result.parentCorrespondence || '';
-            document.getElementById('accDiagnosis').value = result.diagnosisTreatment || '';
-            document.getElementById('accPrevention').value = result.prevention || '';
-
-            document.getElementById('accidentResultArea').classList.remove('hidden');
-            document.getElementById('accidentResultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
-            document.getElementById('saveBtnContainer').classList.remove('hidden');
-        }
-
-        function updateCharCounts() {
-            const internalLen = document.getElementById('internalResult').value.length;
-            const customerLen = document.getElementById('customerResult').value.length;
-            document.getElementById('internalCount').textContent = internalLen + '文字';
-            document.getElementById('customerCount').textContent = customerLen + '文字';
-        }
-
-        function saveReport() {
-            const btn = document.getElementById('saveBtn');
-            btn.disabled = true;
-            btn.textContent = '保存中...';
-
-            if (currentReportMode === 'daily') {
-                const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
-                const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
-
-                google.script.run.withSuccessHandler((res) => {
-                    const msg = (res && res.message) ? res.message : '保存しました';
-                    const isWarning = (res && res.message && res.message.includes('失敗'));
-                    showToast(msg, isWarning);
-
-                    if (!isWarning) {
-                        closeModal();
-                    }
-                    btn.disabled = false;
-                    btn.textContent = '保存する';
-                }).saveReport({
-                    customerId: currentCustomer.id,
-                    customerName: currentCustomer.name,
-                    inputText: document.getElementById('reportInput').value,
-                    start: start,
-                    end: end,
-                    internalText: document.getElementById('internalResult').value,
-                    customerText: document.getElementById('customerResult').value,
-                    staffName: currentStaffName,
-                    images: currentImages // Add images
-                });
-            } else {
-                // Save Accident
-                const reportType = document.querySelector('input[name="accType"]:checked').value;
-
-                google.script.run.withSuccessHandler(() => {
-                    showToast(reportType + 'を保存しました');
-                    closeModal();
-                    btn.disabled = false;
-                    btn.textContent = '保存する';
-                }).saveAccidentReport({
-                    customerId: currentCustomer.id,
-                    customerName: currentCustomer.name,
-                    staffName: currentStaffName,
-                    targetName: document.getElementById('accTargetName').value,
-                    targetDob: document.getElementById('accTargetDob').value,
-                    inputText: document.getElementById('reportInput').value,
-                    occurrenceTime: document.getElementById('accOccurrenceTime').value,
-                    location: document.getElementById('accLocation').value,
-                    accidentContent: document.getElementById('accContent').value,
-                    situation: document.getElementById('accSituation').value,
-                    immediateResponse: document.getElementById('accResponse').value,
-                    parentCorrespondence: document.getElementById('accParentCorrespondence').value,
-                    diagnosisTreatment: document.getElementById('accDiagnosis').value,
-                    prevention: document.getElementById('accPrevention').value,
-                    reportType: reportType
-                });
-            }
-        }
-
-        function startVoiceInput() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-            if (!SpeechRecognition) {
-                showToast('このブラウザはWeb Speech APIによる音声入力に対応していません。', true);
-                return;
-            }
-
-            const micBtn = document.getElementById('micBtn');
-            if (micBtn.disabled) return; // Prevent double click
-
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'ja-JP';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-
-            // UI updating
-            micBtn.disabled = true;
-            micBtn.classList.add('bg-red-100', 'text-red-700');
-            micBtn.innerHTML = '<span class="animate-pulse">🔴</span> <span>聞いています...</span>';
-
-            recognition.start();
-
-            recognition.onresult = function (event) {
-                const transcript = event.results[0][0].transcript;
-                const textarea = document.getElementById('reportInput');
-                textarea.value = (textarea.value ? textarea.value + "\n" : "") + transcript;
-            };
-
-            // Using onend to guaranteed cleanup
-            recognition.onend = function () {
-                resetMicBtn();
-            };
-
-            recognition.onerror = function (event) {
-                console.error(event.error);
-                // Alert specifically for troubleshooting
-                if (event.error === 'not-allowed') {
-                    showToast('マイクの使用が許可されていません。ブラウザの設定で許可してください。', true);
-                } else if (event.error === 'no-speech') {
-                    // Ignore, just silence
-                } else if (event.error === 'network') {
-                    showToast('音声認識サーバーへの接続に失敗しました。', true);
-                } else {
-                    showToast('音声入力エラー: ' + event.error, true);
+                if (months < 0) {
+                    years--;
+                    months += 12;
                 }
-                resetMicBtn();
-            };
-        }
 
-        function resetMicBtn() {
-            const micBtn = document.getElementById('micBtn');
-            micBtn.disabled = false;
-            micBtn.classList.remove('bg-red-100', 'text-red-700');
-            micBtn.innerHTML = '<span id="micIcon">🎤</span> <span>音声入力</span>';
-        }
-
-        function copyToClipboard(elementId) {
-            const el = document.getElementById(elementId);
-            el.select();
-            document.execCommand('copy');
-            showToast('コピーしました');
-        }
-
-        function showToast(message, isError = false) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.remove('bg-gray-800', 'bg-red-600', 'opacity-0', 'translate-y-4');
-
-            if (isError) {
-                toast.classList.add('bg-red-600');
-            } else {
-                toast.classList.add('bg-gray-800');
+                // To half-width digits
+                const toFullWidth = (n) => String(n).replace(/[0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + 0xFEE0));
+                // User example shows Full Width numbers: "０歳３か月"
+                // Wait, standard JP usage often uses half-width but user requested "０歳３か月".
+                // I will use full-width for numbers to match request.
+                return `（${toFullWidth(years)}歳${toFullWidth(months)}か月）`;
             }
 
-            // Show
-            toast.classList.remove('opacity-0');
+            function openModal(customer) {
+                currentCustomer = customer;
+                document.getElementById('modalCustomerName').textContent = customer.name;
+                document.getElementById('modalCustomerAddress').textContent = customer.address;
 
-            // Hide after 3s
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-            }, 3000);
-        }
-        // Image Handling
-        let currentImages = []; // Array of { data: base64, amount: number|string, loading: boolean }
-
-        function triggerCamera() {
-            document.getElementById('cameraInput').click();
-        }
-
-        function triggerGallery() {
-            document.getElementById('galleryInput').click();
-        }
-
-        function handleFileSelect(input) {
-            const files = Array.from(input.files);
-            if (files.length === 0) return;
-
-            // Check limit
-            if (currentImages.length + files.length > 6) {
-                showToast('画像は最大6枚までです', true);
-                input.value = '';
-                return;
-            }
-
-            let processedCount = 0;
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    resizeAndAddImage(e.target.result, () => {
-                        processedCount++;
-                        if (processedCount === files.length) {
-                            input.value = ''; // Reset
-                        }
+                // Populate Family Selector
+                const famSelect = document.getElementById('familySelector');
+                famSelect.innerHTML = '<option value="">(選択してください)</option>';
+                if (customer.family && customer.family.length > 0) {
+                    customer.family.forEach((fam, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = idx;
+                        const ageStr = calculateAge(fam.dob);
+                        opt.textContent = fam.name + ' ' + ageStr;
+                        famSelect.appendChild(opt);
                     });
-                };
-                reader.readAsDataURL(file);
-            });
-        }
-
-        function resizeAndAddImage(base64Str, callback) {
-            const img = new Image();
-            img.onload = function () {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 1200;
-                const MAX_HEIGHT = 1200;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
+                }
+                // Auto Select first child or reset
+                if (customer.family && customer.family.length > 0) {
+                    famSelect.value = "0";
                 } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
+                    famSelect.value = "";
+                }
+                onFamilySelect(); // Updates UI based on selection
+
+                // Reset form
+                document.getElementById('startHour').value = "09";
+                document.getElementById('startMinute').value = "00";
+                autoSetEndTime();
+
+                document.getElementById('reportInput').value = '';
+
+                // Clear all results
+                document.getElementById('internalResult').value = '';
+                document.getElementById('customerResult').value = '';
+                document.getElementById('accOccurrenceTime').value = '';
+                document.getElementById('accLocation').value = '';
+                document.getElementById('accContent').value = '';
+                document.getElementById('accSituation').value = '';
+                document.getElementById('accResponse').value = '';
+                document.getElementById('accParentCorrespondence').value = '';
+                document.getElementById('accDiagnosis').value = '';
+                document.getElementById('accPrevention').value = '';
+
+                document.getElementById('warningsArea').classList.add('hidden');
+
+                // Default to Daily
+                switchMode('daily');
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    modalContent.classList.remove('translate-y-full');
+                }, 10);
+            }
+
+
+            function onFamilySelect() {
+                const idx = document.getElementById('familySelector').value;
+                const infoBox = document.getElementById('familyInfoBox');
+
+                // Always hide info box as requested ("No annotations", "Only list")
+                infoBox.classList.add('hidden');
+
+                if (idx === "") {
+                    document.getElementById('accTargetName').value = '';
+                    document.getElementById('accTargetDob').value = '';
+                    return;
+                }
+
+                const fam = currentCustomer.family[idx];
+                if (fam) {
+                    // Auto-fill Accident fields
+                    document.getElementById('accTargetName').value = fam.name;
+                    document.getElementById('accTargetDob').value = fam.dob;
+                }
+            }
+
+            function closeModal() {
+                modal.classList.add('opacity-0');
+                modalContent.classList.add('translate-y-full');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    currentCustomer = null;
+                }, 300);
+            }
+
+            function autoSetEndTime() {
+                const sH = parseInt(document.getElementById('startHour').value);
+                const sM = document.getElementById('startMinute').value;
+                if (isNaN(sH)) return;
+                let eH = sH + 2;
+                if (eH >= 24) eH -= 24;
+                const pad = (n) => n.toString().padStart(2, '0');
+                document.getElementById('endHour').value = pad(eH);
+                document.getElementById('endMinute').value = sM;
+            }
+
+            function generateReport() {
+                const input = document.getElementById('reportInput').value;
+                const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+
+                if (!input.trim()) {
+                    showToast('メモを入力してください');
+                    return;
+                }
+
+                const btn = document.getElementById('generateBtn');
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div> 生成中...';
+
+                if (currentReportMode === 'daily') {
+                    const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+                    google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
+                        showToast('Error: ' + e.message, true);
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
+                    }).generateReportWithWarnings({
+                        text: input,
+                        start: start,
+                        end: end
+                    });
+                } else {
+                    // Accident Mode
+                    google.script.run.withSuccessHandler(onAccidentReportGenerated).withFailureHandler(e => {
+                        showToast('Error: ' + e.message, true);
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
+                    }).generateAccidentReport({
+                        text: input,
+                        start: start,
+                        end: "" // not used potentially
+                    });
+                }
+            }
+
+            function onReportGenerated(result) {
+                const btn = document.getElementById('generateBtn');
+                btn.disabled = false;
+                btn.innerHTML = '<span>日報を作成する</span>';
+
+                const warningsArea = document.getElementById('warningsArea');
+                if (result.warnings && result.warnings.length > 0) {
+                    document.getElementById('warningsList').textContent = result.warnings.join(', ');
+                    warningsArea.classList.remove('hidden');
+                    warningsArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    warningsArea.classList.add('hidden');
+                    document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+
+                let customerText = result.customer;
+                if (currentStaffName) {
+                    const parts = currentStaffName.split(/[\s　]+/);
+                    if (parts.length > 0) {
+                        customerText += '\n\n' + parts[0];
                     }
                 }
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
+                document.getElementById('internalResult').value = result.internal;
+                document.getElementById('customerResult').value = customerText;
+                document.getElementById('resultArea').classList.remove('hidden');
+                document.getElementById('saveBtnContainer').classList.remove('hidden'); // Show shared save button
 
-                // Compress to JPEG 0.7
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                updateCharCounts();
+            }
 
-                // Add to list with empty amount and loading state
-                const newIdx = currentImages.length;
-                currentImages.push({ data: dataUrl, amount: '', loading: true });
-                renderImagePreviews();
+            function onAccidentReportGenerated(result) {
+                const btn = document.getElementById('generateBtn');
+                btn.disabled = false;
+                btn.innerHTML = '<span>事故報告書を作成する</span>';
 
-                // Trigger OCR
-                runOcr(newIdx, dataUrl);
+                if (result.error) {
+                    showToast(result.error, true);
+                    return;
+                }
 
-                if (callback) callback();
-            };
-            img.src = base64Str;
-        }
+                // Populate fields
+                document.getElementById('accOccurrenceTime').value = result.occurrenceTime || '';
+                document.getElementById('accLocation').value = result.location || '';
+                document.getElementById('accContent').value = result.accidentContent || '';
+                document.getElementById('accSituation').value = result.situation || '';
+                document.getElementById('accResponse').value = result.immediateResponse || '';
+                document.getElementById('accParentCorrespondence').value = result.parentCorrespondence || '';
+                document.getElementById('accDiagnosis').value = result.diagnosisTreatment || '';
+                document.getElementById('accPrevention').value = result.prevention || '';
 
-        function runOcr(index, base64Data) {
-            google.script.run.withSuccessHandler(res => {
-                if (currentImages[index]) {
-                    currentImages[index].loading = false;
-                    if (res.amount) {
-                        currentImages[index].amount = res.amount;
+                document.getElementById('accidentResultArea').classList.remove('hidden');
+                document.getElementById('accidentResultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.getElementById('saveBtnContainer').classList.remove('hidden');
+            }
+
+            function updateCharCounts() {
+                const internalLen = document.getElementById('internalResult').value.length;
+                const customerLen = document.getElementById('customerResult').value.length;
+                document.getElementById('internalCount').textContent = internalLen + '文字';
+                document.getElementById('customerCount').textContent = customerLen + '文字';
+            }
+
+            function saveReport() {
+                const btn = document.getElementById('saveBtn');
+                btn.disabled = true;
+                btn.textContent = '保存中...';
+
+                if (currentReportMode === 'daily') {
+                    const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+                    const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+
+                    google.script.run.withSuccessHandler((res) => {
+                        const msg = (res && res.message) ? res.message : '保存しました';
+                        const isWarning = (res && res.message && res.message.includes('失敗'));
+                        showToast(msg, isWarning);
+
+                        if (!isWarning) {
+                            closeModal();
+                        }
+                        btn.disabled = false;
+                        btn.textContent = '保存する';
+                    }).saveReport({
+                        customerId: currentCustomer.id,
+                        customerName: currentCustomer.name,
+                        inputText: document.getElementById('reportInput').value,
+                        start: start,
+                        end: end,
+                        internalText: document.getElementById('internalResult').value,
+                        customerText: document.getElementById('customerResult').value,
+                        staffName: currentStaffName,
+                        images: currentImages // Add images
+                    });
+                } else {
+                    // Save Accident
+                    const reportType = document.querySelector('input[name="accType"]:checked').value;
+
+                    google.script.run.withSuccessHandler(() => {
+                        showToast(reportType + 'を保存しました');
+                        closeModal();
+                        btn.disabled = false;
+                        btn.textContent = '保存する';
+                    }).saveAccidentReport({
+                        customerId: currentCustomer.id,
+                        customerName: currentCustomer.name,
+                        staffName: currentStaffName,
+                        targetName: document.getElementById('accTargetName').value,
+                        targetDob: document.getElementById('accTargetDob').value,
+                        inputText: document.getElementById('reportInput').value,
+                        occurrenceTime: document.getElementById('accOccurrenceTime').value,
+                        location: document.getElementById('accLocation').value,
+                        accidentContent: document.getElementById('accContent').value,
+                        situation: document.getElementById('accSituation').value,
+                        immediateResponse: document.getElementById('accResponse').value,
+                        parentCorrespondence: document.getElementById('accParentCorrespondence').value,
+                        diagnosisTreatment: document.getElementById('accDiagnosis').value,
+                        prevention: document.getElementById('accPrevention').value,
+                        reportType: reportType
+                    });
+                }
+            }
+
+            function startVoiceInput() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+                if (!SpeechRecognition) {
+                    showToast('このブラウザはWeb Speech APIによる音声入力に対応していません。', true);
+                    return;
+                }
+
+                const micBtn = document.getElementById('micBtn');
+                if (micBtn.disabled) return; // Prevent double click
+
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'ja-JP';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                // UI updating
+                micBtn.disabled = true;
+                micBtn.classList.add('bg-red-100', 'text-red-700');
+                micBtn.innerHTML = '<span class="animate-pulse">🔴</span> <span>聞いています...</span>';
+
+                recognition.start();
+
+                recognition.onresult = function (event) {
+                    const transcript = event.results[0][0].transcript;
+                    const textarea = document.getElementById('reportInput');
+                    textarea.value = (textarea.value ? textarea.value + "\n" : "") + transcript;
+                };
+
+                // Using onend to guaranteed cleanup
+                recognition.onend = function () {
+                    resetMicBtn();
+                };
+
+                recognition.onerror = function (event) {
+                    console.error(event.error);
+                    // Alert specifically for troubleshooting
+                    if (event.error === 'not-allowed') {
+                        showToast('マイクの使用が許可されていません。ブラウザの設定で許可してください。', true);
+                    } else if (event.error === 'no-speech') {
+                        // Ignore, just silence
+                    } else if (event.error === 'network') {
+                        showToast('音声認識サーバーへの接続に失敗しました。', true);
+                    } else {
+                        showToast('音声入力エラー: ' + event.error, true);
                     }
-                    renderImagePreviews();
+                    resetMicBtn();
+                };
+            }
+
+            function resetMicBtn() {
+                const micBtn = document.getElementById('micBtn');
+                micBtn.disabled = false;
+                micBtn.classList.remove('bg-red-100', 'text-red-700');
+                micBtn.innerHTML = '<span id="micIcon">🎤</span> <span>音声入力</span>';
+            }
+
+            function copyToClipboard(elementId) {
+                const el = document.getElementById(elementId);
+                el.select();
+                document.execCommand('copy');
+                showToast('コピーしました');
+            }
+
+            function showToast(message, isError = false) {
+                const toast = document.getElementById('toast');
+                toast.textContent = message;
+                toast.classList.remove('bg-gray-800', 'bg-red-600', 'opacity-0', 'translate-y-4');
+
+                if (isError) {
+                    toast.classList.add('bg-red-600');
+                } else {
+                    toast.classList.add('bg-gray-800');
                 }
-            }).withFailureHandler(e => {
-                console.error("OCR Failed", e);
-                if (currentImages[index]) {
-                    currentImages[index].loading = false;
-                    renderImagePreviews();
+
+                // Show
+                toast.classList.remove('opacity-0');
+
+                // Hide after 3s
+                setTimeout(() => {
+                    toast.classList.add('opacity-0');
+                }, 3000);
+            }
+            // Image Handling
+            let currentImages = []; // Array of { data: base64, amount: number|string, loading: boolean }
+
+            function triggerCamera() {
+                document.getElementById('cameraInput').click();
+            }
+
+            function triggerGallery() {
+                document.getElementById('galleryInput').click();
+            }
+
+            function handleFileSelect(input) {
+                const files = Array.from(input.files);
+                if (files.length === 0) return;
+
+                // Check limit
+                if (currentImages.length + files.length > 6) {
+                    showToast('画像は最大6枚までです', true);
+                    input.value = '';
+                    return;
                 }
-            }).extractAmountFromImage(base64Data);
-        }
 
-        function renderImagePreviews() {
-            const container = document.getElementById('imagePreviewContainer');
-            container.innerHTML = '';
+                let processedCount = 0;
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        resizeAndAddImage(e.target.result, () => {
+                            processedCount++;
+                            if (processedCount === files.length) {
+                                input.value = ''; // Reset
+                            }
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
 
-            currentImages.forEach((imgObj, idx) => {
-                const div = document.createElement('div');
-                div.className = 'relative w-28 flex flex-col gap-1 items-center'; // increased width
+            function resizeAndAddImage(base64Str, callback) {
+                const img = new Image();
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1200;
+                    const MAX_HEIGHT = 1200;
+                    let width = img.width;
+                    let height = img.height;
 
-                // Image Container
-                const imgDiv = document.createElement('div');
-                imgDiv.className = 'relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-200 group bg-gray-100';
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
 
-                imgDiv.innerHTML = `
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Compress to JPEG 0.7
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+                    // Add to list with empty amount and loading state
+                    const newIdx = currentImages.length;
+                    currentImages.push({ data: dataUrl, amount: '', loading: true });
+                    renderImagePreviews();
+
+                    // Trigger OCR
+                    runOcr(newIdx, dataUrl);
+
+                    if (callback) callback();
+                };
+                img.src = base64Str;
+            }
+
+            function runOcr(index, base64Data) {
+                google.script.run.withSuccessHandler(res => {
+                    if (currentImages[index]) {
+                        currentImages[index].loading = false;
+                        if (res.amount) {
+                            currentImages[index].amount = res.amount;
+                        }
+                        renderImagePreviews();
+                    }
+                }).withFailureHandler(e => {
+                    console.error("OCR Failed", e);
+                    if (currentImages[index]) {
+                        currentImages[index].loading = false;
+                        renderImagePreviews();
+                    }
+                }).extractAmountFromImage(base64Data);
+            }
+
+            function renderImagePreviews() {
+                const container = document.getElementById('imagePreviewContainer');
+                container.innerHTML = '';
+
+                currentImages.forEach((imgObj, idx) => {
+                    const div = document.createElement('div');
+                    div.className = 'relative w-28 flex flex-col gap-1 items-center'; // increased width
+
+                    // Image Container
+                    const imgDiv = document.createElement('div');
+                    imgDiv.className = 'relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-200 group bg-gray-100';
+
+                    imgDiv.innerHTML = `
                     <img src="${imgObj.data}" class="w-full h-full object-cover">
                     <button onclick="removeImage(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 hover:opacity-100 shadow-md z-10">
                         &times;
@@ -1619,11 +1763,11 @@
                     ${imgObj.loading ? '<div class="absolute inset-0 bg-black/30 flex items-center justify-center"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div></div>' : ''}
                 `;
 
-                // Wrapper for input with "円" label
-                const inputContainer = document.createElement('div');
-                inputContainer.className = "w-full px-1";
-                // Using oninput to update model
-                inputContainer.innerHTML = `
+                    // Wrapper for input with "円" label
+                    const inputContainer = document.createElement('div');
+                    inputContainer.className = "w-full px-1";
+                    // Using oninput to update model
+                    inputContainer.innerHTML = `
                     <input type="number" 
                         value="${imgObj.amount}" 
                         placeholder="金額" 
@@ -1633,188 +1777,117 @@
                     >
                 `;
 
-                div.appendChild(imgDiv);
-                div.appendChild(inputContainer);
-                container.appendChild(div);
-            });
+                    div.appendChild(imgDiv);
+                    div.appendChild(inputContainer);
+                    container.appendChild(div);
+                });
 
-            // Toggle Add Button Visibility
-            const camBtn = document.getElementById('addCameraBtn');
-            const galBtn = document.getElementById('addGalleryBtn');
+                // Toggle Add Button Visibility
+                const camBtn = document.getElementById('addCameraBtn');
+                const galBtn = document.getElementById('addGalleryBtn');
 
-            if (currentImages.length >= 6) {
-                if (camBtn) camBtn.classList.add('hidden');
-                if (galBtn) galBtn.classList.add('hidden');
-            } else {
-                if (camBtn) camBtn.classList.remove('hidden');
-                if (galBtn) galBtn.classList.remove('hidden');
+                if (currentImages.length >= 6) {
+                    if (camBtn) camBtn.classList.add('hidden');
+                    if (galBtn) galBtn.classList.add('hidden');
+                } else {
+                    if (camBtn) camBtn.classList.remove('hidden');
+                    if (galBtn) galBtn.classList.remove('hidden');
+                }
             }
-        }
 
-        function removeImage(index) {
-            currentImages.splice(index, 1);
-            // Re-render will fix indices in handlers because it loops generic idx
-            renderImagePreviews();
-        }
+            function removeImage(index) {
+                currentImages.splice(index, 1);
+                // Re-render will fix indices in handlers because it loops generic idx
+                renderImagePreviews();
+            }
 
-        // Also reset images when opening modal
-        const originalOpenModal = openModal;
-        openModal = function (customer) {
-            originalOpenModal(customer);
-            currentImages = []; // Reset
-            renderImagePreviews();
-        };
+            // Also reset images when opening modal
+            const originalOpenModal = openModal;
+            openModal = function (customer) {
+                originalOpenModal(customer);
+                currentImages = []; // Reset
+                renderImagePreviews();
+            };
 
-    </script>
-    <!-- Customer Detail Modal -->
-    <div id="customerDetailModal"
-        class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
-        <div
-            class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform transition-transform scale-95">
-            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-                <h3 class="font-bold text-lg text-gray-800">顧客詳細情報</h3>
-                <button onclick="closeCustomerDetail()"
-                    class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
-            </div>
-            <div class="p-6 overflow-y-auto space-y-6">
-                <!-- Family Section -->
-                <div>
-                    <h4 class="font-bold text-gray-700 mb-2 border-l-4 border-blue-500 pl-2">ご家族情報</h4>
-                    <div id="detailFamilyList" class="space-y-2"></div>
+        </script>
+        <!-- Customer Detail Modal -->
+        <div id="customerDetailModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform transition-transform scale-95">
+                <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                    <h3 class="font-bold text-lg text-gray-800">顧客詳細情報</h3>
+                    <button onclick="closeCustomerDetail()"
+                        class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
                 </div>
-                <!-- Customer Data Section -->
-                <div>
-                    <h4 class="font-bold text-gray-700 mb-2 border-l-4 border-green-500 pl-2">基本情報</h4>
-                    <div id="detailCustomerTable" class="grid grid-cols-1 gap-y-2 text-sm"></div>
-                </div>
+                <div class="p-6 overflow-y-auto space-y-6">
+                    <!-- Family Section -->
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-2 border-l-4 border-blue-500 pl-2">ご家族情報</h4>
+                        <div id="detailFamilyList" class="space-y-2"></div>
+                    </div>
+                    <!-- Customer Data Section -->
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-2 border-l-4 border-green-500 pl-2">基本情報</h4>
+                        <div id="detailCustomerTable" class="grid grid-cols-1 gap-y-2 text-sm"></div>
+                    </div>
 
-                <!-- Past Reports Section Removed -->
-            </div>
-            <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
-                <button onclick="closeCustomerDetail()"
-                    class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
+                    <!-- Past Reports Section Removed -->
+                </div>
+                <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
+                    <button onclick="closeCustomerDetail()"
+                        class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Customer History Modal -->
-    <div id="customerHistoryModal"
-        class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
-        <div
-            class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform transition-transform scale-95">
-            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-                <h3 class="font-bold text-lg text-gray-800">過去の活動記録</h3>
-                <button onclick="closeCustomerHistory()"
-                    class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
-            </div>
-            <div class="p-6 overflow-y-auto space-y-6">
-                <div id="historySection">
-                    <h4
-                        class="font-bold text-gray-700 mb-2 border-l-4 border-orange-500 pl-2 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                            <span>タイムライン</span>
-                            <button onclick="if(currentDetailId) loadCustomerHistory(currentDetailId, true)"
-                                class="p-1 hover:bg-orange-100 rounded text-orange-400 hover:text-orange-600 transition-colors"
-                                title="更新">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
-                                    </path>
-                                </svg>
-                            </button>
-                        </div>
-                        <span id="historyLoading"
-                            class="hidden text-xs font-normal text-gray-500 flex items-center gap-1">
-                            <div
-                                class="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin">
+        <!-- Customer History Modal -->
+        <div id="customerHistoryModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col transform transition-transform scale-95">
+                <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                    <h3 class="font-bold text-lg text-gray-800">過去の活動記録</h3>
+                    <button onclick="closeCustomerHistory()"
+                        class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
+                </div>
+                <div class="p-6 overflow-y-auto space-y-6">
+                    <div id="historySection">
+                        <h4
+                            class="font-bold text-gray-700 mb-2 border-l-4 border-orange-500 pl-2 flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <span>タイムライン</span>
+                                <button onclick="if(currentDetailId) loadCustomerHistory(currentDetailId, true)"
+                                    class="p-1 hover:bg-orange-100 rounded text-orange-400 hover:text-orange-600 transition-colors"
+                                    title="更新">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                        </path>
+                                    </svg>
+                                </button>
                             </div>
-                            読み込み中...
-                        </span>
-                    </h4>
-                    <div id="detailReportTimeline" class="space-y-4 pl-2 border-l-2 border-gray-200 ml-2 relative">
-                        <!-- Timeline items will go here -->
-                        <div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>
+                            <span id="historyLoading"
+                                class="hidden text-xs font-normal text-gray-500 flex items-center gap-1">
+                                <div
+                                    class="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin">
+                                </div>
+                                読み込み中...
+                            </span>
+                        </h4>
+                        <div id="detailReportTimeline" class="space-y-4 pl-2 border-l-2 border-gray-200 ml-2 relative">
+                            <!-- Timeline items will go here -->
+                            <div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
-                <button onclick="closeCustomerHistory()"
-                    class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
-            </div>
-        </div>
-    </div>
-    <!-- Settings Modal -->
-    <div id="settingsModal"
-        class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
-        <div
-            class="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col transform transition-transform scale-95">
-            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-                <h3 class="font-bold text-lg text-gray-800">設定</h3>
-                <button onclick="closeSettings()"
-                    class="p-2 hover:bg-gray-200 rounded-full text-gray-500">&times;</button>
-            </div>
-            <div class="p-6">
-                <h4 class="font-bold text-gray-700 mb-4">文字サイズ設定</h4>
-                <div class="space-y-3">
-                    <label
-                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
-                        <input type="radio" name="textSize" value="small" onchange="applyTextSize('small')"
-                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
-                        <span class="text-xs text-gray-600">小 (標準)</span>
-                    </label>
-                    <label
-                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
-                        <input type="radio" name="textSize" value="medium" onchange="applyTextSize('medium')"
-                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
-                        <span class="text-sm font-bold text-gray-800">中 (少し大きく)</span>
-                    </label>
-                    <label
-                        class="flex items-center space-x-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200">
-                        <input type="radio" name="textSize" value="large" onchange="applyTextSize('large')"
-                            class="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300">
-                        <span class="text-base font-bold text-gray-900">大 (大きく)</span>
-                    </label>
+                <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
+                    <button onclick="closeCustomerHistory()"
+                        class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
                 </div>
             </div>
-            <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
-                <button onclick="closeSettings()"
-                    class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
-            </div>
         </div>
-    </div>
-    <script>
-        // Init font size from local storage defaults to small
-        (function () {
-            const saved = localStorage.getItem('app_text_size') || 'small';
-            document.documentElement.setAttribute('data-text-size', saved);
-        })();
 
-        function openSettings() {
-            const modal = document.getElementById('settingsModal');
-            modal.classList.remove('hidden');
-            setTimeout(() => modal.classList.remove('opacity-0'), 10);
-            setTimeout(() => {
-                modal.querySelector('div').classList.remove('scale-95');
-                modal.querySelector('div').classList.add('transition-all');
-            }, 10);
-
-            // Set radio
-            const current = localStorage.getItem('app_text_size') || 'small';
-            const radio = document.querySelector(`input[name="textSize"][value="${current}"]`);
-            if (radio) radio.checked = true;
-        }
-
-        function closeSettings() {
-            const modal = document.getElementById('settingsModal');
-            modal.classList.add('opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 300);
-        }
-
-        function applyTextSize(size) {
-            document.documentElement.setAttribute('data-text-size', size);
-            localStorage.setItem('app_text_size', size);
-        }
-    </script>
 </body>
 
 </html>
