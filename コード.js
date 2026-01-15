@@ -467,6 +467,21 @@ function extractAmountFromImage(base64Image) {
     return result;
 }
 
+// --- Firestore Integration ---
+function getFirestore() {
+    const props = PropertiesService.getScriptProperties();
+    const email = props.getProperty('FIREBASE_CLIENT_EMAIL');
+    const key = props.getProperty('FIREBASE_PRIVATE_KEY');
+    const projectId = props.getProperty('FIREBASE_PROJECT_ID');
+
+    if (!email || !key || !projectId) {
+        console.warn("Firestore Config Missing: Email=" + !!email + ", Key=" + !!key + ", ProjectId=" + !!projectId);
+        return null;
+    }
+
+    return FirestoreApp.getFirestore(email, key.replace(/\\n/g, '\n'), projectId);
+}
+
 /**
  * Saves the final report to 'Reports' sheet.
  */
@@ -514,6 +529,32 @@ function saveReport(reportData) {
         reportData.riskRating || "",
         reportData.esRating || ""
     ]);
+
+    // --- Firestore Write ---
+    const firestore = getFirestore();
+    if (firestore) {
+        try {
+            const docData = {
+                timestamp: timestampJST,
+                start: reportData.start || "",
+                end: reportData.end || "",
+                staffName: reportData.staffName || "",
+                customerId: reportData.customerId || "",
+                customerName: reportData.customerName || "",
+                inputText: reportData.inputText,
+                internalText: reportData.internalText,
+                customerText: reportData.customerText,
+                riskRating: reportData.riskRating || 0,
+                esRating: reportData.esRating || 0,
+                reportDate: reportData.reportDate || "",
+                type: 'daily',
+                createdAt: new Date()
+            };
+            firestore.createDocument("reports", docData);
+        } catch (e) {
+            console.error("Firestore Write Error: " + e.message);
+        }
+    }
 
     // Handle Image Uploads with Amount
     let imageStatus = "No Images";
@@ -698,6 +739,36 @@ function saveAccidentReport(reportData) {
         reportData.inputText,
         reportData.reportType || "事故報告" // Default to Accident if missing
     ]);
+
+    // --- Firestore Write (Accident) ---
+    const firestore = getFirestore();
+    if (firestore) {
+        try {
+            const docData = {
+                timestamp: timestampJST,
+                staffName: reportData.staffName || "",
+                customerId: reportData.customerId || "",
+                customerName: reportData.customerName || "",
+                targetName: reportData.targetName || "",
+                targetDob: reportData.targetDob || "",
+                occurrenceTime: reportData.occurrenceTime,
+                location: reportData.location,
+                accidentContent: reportData.accidentContent,
+                situation: reportData.situation,
+                immediateResponse: reportData.immediateResponse,
+                parentCorrespondence: reportData.parentCorrespondence,
+                diagnosisTreatment: reportData.diagnosisTreatment,
+                prevention: reportData.prevention,
+                inputText: reportData.inputText,
+                reportType: reportData.reportType || "事故報告",
+                type: 'accident',
+                createdAt: new Date()
+            };
+            firestore.createDocument("reports", docData);
+        } catch (e) {
+            console.error("Firestore Write Error (Accident): " + e.message);
+        }
+    }
 
     // --- LineWorks Notification ---
     try {
@@ -1220,7 +1291,62 @@ function getUiConfig() {
  * Retrieves past reports for a specific customer.
  * Returns both Daily and Accident reports, sorted by date (newest first).
  */
-function getCustomerReports(customerId) {
+function getCustomerReports(customerId, startAfterTime) {
+    const limit = 20;
+
+    // --- Firestore Read ---
+    try {
+        const firestore = getFirestore();
+        if (firestore) {
+            // Index exists: Sort by timestamp desc on server
+            let query = firestore.query("reports")
+                .Where("customerId", "==", String(customerId))
+                .OrderBy("timestamp", "desc");
+
+            if (startAfterTime) {
+                query = query.StartAfter(startAfterTime);
+            }
+
+            const docs = query.Limit(limit).Execute();
+
+            console.log("Firestore Docs Found: " + (docs ? docs.length : "null"));
+
+            if (docs && docs.length > 0) {
+                return docs.map(doc => {
+                    const d = doc.obj || doc;
+                    if (d.type === 'accident') {
+                        return {
+                            type: 'accident',
+                            timestamp: d.timestamp,
+                            staff: d.staffName,
+                            accidentContent: d.accidentContent,
+                            situation: d.situation,
+                            prevention: d.prevention
+                        };
+                    } else {
+                        return {
+                            type: 'daily',
+                            timestamp: d.timestamp,
+                            staff: d.staffName,
+                            original: d.inputText,
+                            internal: d.internalText,
+                            customer: d.customerText,
+                            risk: d.riskRating,
+                            es: d.esRating
+                        };
+                    }
+                });
+            } else if (startAfterTime) {
+                return [];
+            }
+        }
+    } catch (e) {
+        console.warn("Firestore Read Error (Using Sheet Fallback): " + e.message);
+    }
+
+    // --- Sheet Fallback ---
+    if (startAfterTime) return []; // Fallback only supports initial load
+
     const ss = getSpreadsheet();
     const results = [];
     const fmt = (d) => {
@@ -1301,4 +1427,101 @@ function getCustomerReports(customerId) {
     });
 
     return results;
+}
+
+/**
+ * One-time migration function to copy data from Sheet to Firestore.
+ * Run this manually from GAS Editor.
+ */
+function migrateDataToFirestore() {
+    const firestore = getFirestore();
+    if (!firestore) {
+        console.error("Firestore not configured. Please checks Script Properties.");
+        return "Firestore Not Configured";
+    }
+
+    const ss = getSpreadsheet();
+    let migratedCount = 0;
+
+    // 1. Daily Reports
+    const dailySheet = ss.getSheetByName(REPORT_SHEET_NAME);
+    if (dailySheet && dailySheet.getLastRow() > 1) {
+        const rows = dailySheet.getDataRange().getValues().slice(1);
+        rows.forEach(row => {
+            try {
+                if (!row[4]) return; // Skip if no Customer ID
+
+                const timeStr = (row[0] instanceof Date) ? Utilities.formatDate(row[0], "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss") : String(row[0]);
+                // Create deterministic ID to prevent duplicates on re-run
+                // ID: D_CustomerID_Timestamp(NumbersOnly)
+                const docId = `D_${String(row[4])}_${timeStr.replace(/[^0-9]/g, '')}`;
+
+                const docData = {
+                    timestamp: timeStr,
+                    start: String(row[1]),
+                    end: String(row[2]),
+                    staffName: String(row[3]),
+                    customerId: String(row[4]),
+                    customerName: String(row[5]),
+                    inputText: String(row[6]),
+                    internalText: String(row[7]),
+                    customerText: String(row[8]),
+                    riskRating: Number(row[9]) || 0,
+                    esRating: Number(row[10]) || 0,
+                    type: 'daily',
+                    migratedAt: new Date()
+                };
+
+                // Use ID in path to ensure Upsert behavior (overwrite if exists with this ID)
+                firestore.createDocument("reports/" + docId, docData);
+                migratedCount++;
+            } catch (e) {
+                console.warn("Skipped Daily Row: " + e.message);
+            }
+        });
+    }
+
+    // 2. Accident Reports
+    const accSheet = ss.getSheetByName(ACCIDENT_SHEET_NAME || '事故報告');
+    if (accSheet && accSheet.getLastRow() > 1) {
+        const rows = accSheet.getDataRange().getValues().slice(1);
+        rows.forEach(row => {
+            try {
+                if (!row[2]) return; // CustomerID
+
+                const timeStr = (row[0] instanceof Date) ? Utilities.formatDate(row[0], "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss") : String(row[0]);
+                // ID: A_CustomerID_Timestamp(NumbersOnly)
+                const docId = `A_${String(row[2])}_${timeStr.replace(/[^0-9]/g, '')}`;
+
+                const docData = {
+                    timestamp: timeStr,
+                    staffName: String(row[1]),
+                    customerId: String(row[2]),
+                    customerName: String(row[3]),
+                    targetName: String(row[4]),
+                    targetDob: (row[5] instanceof Date) ? Utilities.formatDate(row[5], "Asia/Tokyo", "yyyy/MM/dd") : String(row[5]),
+                    occurrenceTime: String(row[6]),
+                    location: String(row[7]),
+                    accidentContent: String(row[8]),
+                    situation: String(row[9]),
+                    immediateResponse: String(row[10]),
+                    parentCorrespondence: String(row[11]),
+                    diagnosisTreatment: String(row[12]),
+                    prevention: String(row[13]),
+                    inputText: String(row[14] || ""),
+                    reportType: String(row[15] || "事故報告"),
+                    type: 'accident',
+                    migratedAt: new Date()
+                };
+
+                firestore.createDocument("reports/" + docId, docData);
+                migratedCount++;
+            } catch (e) {
+                console.warn("Skipped Accident Row: " + e.message);
+            }
+        });
+    }
+
+    console.log(`Migration Completed. Total documents processed: ${migratedCount}`);
+    return `Migration Completed. ${migratedCount} records processed.`;
 }

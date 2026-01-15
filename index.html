@@ -1337,43 +1337,68 @@
             }
 
             // Cache Globals
+            // Cache Globals
             let currentDetailId = null;
-            const historyCache = {};
+            let currentHistoryStartAfter = null;
 
-            function loadCustomerHistory(customerId, forceRefresh = false) {
-                currentDetailId = customerId;
-                const timeline = document.getElementById('detailReportTimeline');
-                const loader = document.getElementById('historyLoading');
-
-                // Use Cache if available and not forced
-                if (!forceRefresh && historyCache[customerId]) {
-                    renderHistoryTimeline(historyCache[customerId]);
-                    return;
+            function loadCustomerHistory(customerId, forceRefresh = false, isLoadMore = false) {
+                if (!isLoadMore) {
+                    currentDetailId = customerId;
+                    currentHistoryStartAfter = null;
                 }
 
-                timeline.innerHTML = '';
+                const timeline = document.getElementById('detailReportTimeline');
+                const loader = document.getElementById('historyLoading');
+                const loadMoreContainer = document.getElementById('loadMoreHistoryContainer');
+
+                if (!isLoadMore) {
+                    timeline.innerHTML = '';
+                    if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+                }
+
                 loader.classList.remove('hidden');
+
+                const currentStartAfter = isLoadMore ? currentHistoryStartAfter : null;
 
                 google.script.run.withSuccessHandler(reports => {
                     loader.classList.add('hidden');
-                    historyCache[customerId] = reports || []; // Cache Result
 
                     if (!reports || reports.length === 0) {
-                        timeline.innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴はありません</div>';
+                        if (!isLoadMore) {
+                            timeline.innerHTML = '<div class="text-xs text-gray-400 py-4 pl-4">履歴はありません</div>';
+                        } else {
+                            // No more data
+                            if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
+                        }
                         return;
                     }
-                    renderHistoryTimeline(reports);
+
+                    const lastReport = reports[reports.length - 1];
+                    currentHistoryStartAfter = lastReport.timestamp;
+
+                    renderHistoryTimeline(reports, isLoadMore);
+
+                    if (loadMoreContainer) {
+                        if (reports.length >= 20) {
+                            loadMoreContainer.classList.remove('hidden');
+                        } else {
+                            loadMoreContainer.classList.add('hidden');
+                        }
+                    }
+
                 }).withFailureHandler(e => {
                     loader.classList.add('hidden');
-                    timeline.innerHTML = `<div class="text-xs text-red-400 py-4 pl-4">読み込みエラー: ${e.message}</div>`;
-                }).getCustomerReports(customerId);
+                    const msg = `読み込みエラー: ${e.message}`;
+                    if (!isLoadMore) timeline.innerHTML = `<div class="text-xs text-red-400 py-4 pl-4">${msg}</div>`;
+                    else console.error(msg);
+                }).getCustomerReports(customerId, currentStartAfter);
             }
 
-            function renderHistoryTimeline(reports) {
+            function renderHistoryTimeline(reports, isAppend = false) {
                 const timeline = document.getElementById('detailReportTimeline');
                 let html = '';
 
-                reports.forEach((r, idx) => {
+                reports.forEach((r) => {
                     const isAccident = r.type === 'accident';
 
                     let title = '保育日報';
@@ -1390,7 +1415,8 @@
 
                     const dateStr = r.timestamp.split(' ')[0];
                     const timeStr = r.timestamp.split(' ')[1] || '';
-                    const uid = `rep-${idx}`;
+                    // Unique ID for Tabs
+                    const uid = 'rep-' + Math.random().toString(36).substr(2, 9);
 
                     // Tabs Buttons
                     let tabsHtml = `
@@ -1398,7 +1424,6 @@
                     <button onclick="switchReportTab('${uid}', 'internal')" id="btn-${uid}-internal" class="px-2 py-1 rounded-t font-bold bg-white border-x border-t border-gray-200 text-blue-600">社内向け</button>
                 `;
 
-                    // Add Customer Tab only for non-accidents
                     if (!isAccident) {
                         tabsHtml += `<button onclick="switchReportTab('${uid}', 'customer')" id="btn-${uid}-customer" class="px-2 py-1 rounded-t text-gray-500 hover:bg-gray-200 transition-colors">保護者向け</button>`;
                     }
@@ -1442,7 +1467,11 @@
                 `;
                 });
 
-                timeline.innerHTML = html;
+                if (isAppend) {
+                    timeline.insertAdjacentHTML('beforeend', html);
+                } else {
+                    timeline.innerHTML = html;
+                }
             }
 
             // --- History Modal Functions ---
@@ -2119,6 +2148,18 @@
                         <div id="detailReportTimeline" class="space-y-4 pl-2 border-l-2 border-gray-200 ml-2 relative">
                             <!-- Timeline items will go here -->
                             <div class="text-xs text-gray-400 py-4 pl-4">履歴を読み込んでいます...</div>
+                        </div>
+                        <!-- Load More Button -->
+                        <div id="loadMoreHistoryContainer" class="hidden text-center mt-4">
+                            <button onclick="if(currentDetailId) loadCustomerHistory(currentDetailId, false, true)"
+                                id="loadMoreHistoryBtn"
+                                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-full shadow-sm transition-colors flex items-center gap-2 mx-auto">
+                                <span>もっと見る</span>
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
