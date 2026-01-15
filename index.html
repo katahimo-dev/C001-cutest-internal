@@ -1506,6 +1506,8 @@
 
             function saveReport() {
                 const btn = document.getElementById('saveBtn');
+                if (btn.disabled) return; // Extra safety check
+
                 btn.disabled = true;
                 btn.textContent = '保存中...';
 
@@ -1515,12 +1517,26 @@
 
                     google.script.run.withSuccessHandler((res) => {
                         const msg = (res && res.message) ? res.message : '保存しました';
-                        const isWarning = (res && res.message && res.message.includes('失敗'));
-                        showToast(msg, isWarning);
+                        // Determine if it was a "success" in terms of saving data
+                        // saveReport returns { success: true/false. message: ... }
+                        // If images failed but text saved, success is true.
 
-                        if (!isWarning) {
+                        const isError = (res && !res.success);
+                        const isWarning = (res && res.message && res.message.includes('失敗')); // Image warning
+
+                        showToast(msg, isError || isWarning);
+
+                        if (res && res.success) {
+                            // Report text saved successfully (even if image warning). Close modal to prevent duplicate.
                             closeModal();
+                            // Button remains disabled while modal fades out
+                        } else {
+                            // Report failed to save (e.g. validaton error in GAS?)
+                            btn.disabled = false;
+                            btn.textContent = '保存する';
                         }
+                    }).withFailureHandler(e => {
+                        showToast('Error: ' + e.message, true);
                         btn.disabled = false;
                         btn.textContent = '保存する';
                     }).saveReport({
@@ -1532,7 +1548,7 @@
                         internalText: document.getElementById('internalResult').value,
                         customerText: document.getElementById('customerResult').value,
                         staffName: currentStaffName,
-                        images: currentImages // Add images
+                        images: currentImages
                     });
                 } else {
                     // Save Accident
@@ -1541,6 +1557,8 @@
                     google.script.run.withSuccessHandler(() => {
                         showToast(reportType + 'を保存しました');
                         closeModal();
+                    }).withFailureHandler(e => {
+                        showToast('Error: ' + e.message, true);
                         btn.disabled = false;
                         btn.textContent = '保存する';
                     }).saveAccidentReport({

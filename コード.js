@@ -509,7 +509,8 @@ function saveReport(reportData) {
 
     // --- LineWorks Notification ---
     try {
-        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n顧客: ${reportData.customerName}\n\n${reportData.internalText}`;
+        // Requested format: Staff Name + Internal Report
+        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}`;
         sendToLineWorks(lwText);
     } catch (e) {
         console.error("LineWorks Notification Failed: " + e.message);
@@ -529,7 +530,6 @@ function processReceiptImages(imagesData, staffId, customerId) {
     const folder = DriveApp.getFolderById(RECEIPT_FOLDER_ID);
     const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
     const sheet = ss.getSheets()[0];
-
     // Ensure header matches new requirements
     // Old: ['日時', 'ユーザーID', 'Googleドライブ写真ファイルへのリンク']
     // New: ['日時', 'ユーザーID', '顧客ID', '金額', 'Googleドライブ写真ファイルへのリンク']
@@ -672,7 +672,18 @@ function saveAccidentReport(reportData) {
     // --- LineWorks Notification ---
     try {
         const typeLabel = reportData.reportType || "事故報告";
-        const lwText = `【${typeLabel}】\n担当: ${reportData.staffName}\n対象: ${reportData.targetName}\n件名: ${reportData.accidentContent}\n\n状況: ${reportData.situation}`;
+        const lwText = `【${typeLabel}】
+担当: ${reportData.staffName}
+対象: ${reportData.targetName}
+生年月日: ${reportData.targetDob}
+発生日時: ${reportData.occurrenceTime}
+発生場所: ${reportData.location}
+事故内容: ${reportData.accidentContent}
+発生状況: ${reportData.situation}
+発生時の対応: ${reportData.immediateResponse}
+保護者への対応: ${reportData.parentCorrespondence}
+診断名および処置状況: ${reportData.diagnosisTreatment}
+今後の対応: ${reportData.prevention}`;
         sendToLineWorks(lwText);
     } catch (e) {
         console.error("LineWorks Accident Notification Failed: " + e.message);
