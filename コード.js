@@ -470,16 +470,36 @@ function extractAmountFromImage(base64Image) {
 /**
  * Saves the final report to 'Reports' sheet.
  */
+/**
+ * Saves the final report to 'Reports' sheet.
+ */
+/**
+ * Saves the final report to 'Reports' sheet.
+ */
 function saveReport(reportData) {
     const ss = getSpreadsheet();
     let sheet = ss.getSheetByName(REPORT_SHEET_NAME);
 
     if (!sheet) {
         sheet = ss.insertSheet(REPORT_SHEET_NAME);
-        sheet.appendRow(['Timestamp', 'StartTime', 'EndTime', 'User', 'CustomerId', 'CustomerName', 'InputText', 'InternalReport', 'CustomerReport']);
+        sheet.appendRow(['Timestamp', 'StartTime', 'EndTime', 'User', 'CustomerId', 'CustomerName', 'InputText', 'InternalReport', 'CustomerReport', 'RiskRating', 'EsRating']);
     }
 
-    const timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+    let timestampJST;
+    if (reportData.reportDate) {
+        // Use the selected date and start time
+        const timePart = reportData.start || "00:00";
+        // Ensure date uses slashes for better compatibility if needed, though most environments handle standard formats
+        const datePart = reportData.reportDate.replace(/-/g, '/');
+        const d = new Date(`${datePart} ${timePart}`);
+        if (!isNaN(d.getTime())) {
+            timestampJST = Utilities.formatDate(d, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+        } else {
+            timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+        }
+    } else {
+        timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+    }
 
     sheet.appendRow([
         timestampJST,
@@ -491,6 +511,8 @@ function saveReport(reportData) {
         reportData.inputText,
         reportData.internalText,
         reportData.customerText,
+        reportData.riskRating || "",
+        reportData.esRating || ""
     ]);
 
     // Handle Image Uploads with Amount
@@ -509,8 +531,16 @@ function saveReport(reportData) {
 
     // --- LineWorks Notification ---
     try {
-        // Requested format: Staff Name + Internal Report
-        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}`;
+        const star = (n) => "★".repeat(Number(n) || 0) + "☆".repeat(5 - (Number(n) || 0));
+        let ratingsInfo = "";
+        if (reportData.riskRating || reportData.esRating) {
+            ratingsInfo = "\n\n【評価指標】";
+            if (reportData.riskRating) ratingsInfo += `\nリスク: ${star(reportData.riskRating)} (${reportData.riskRating})`;
+            if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
+        }
+
+        // Requested format: Staff Name + Internal Report + Ratings
+        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}${ratingsInfo}`;
         sendToLineWorks(lwText);
     } catch (e) {
         console.error("LineWorks Notification Failed: " + e.message);
@@ -1149,6 +1179,30 @@ function updateDatabaseFromLinesV2(rawString) {
 }
 
 
+// --- Assessment Definitions ---
+const ASSESSMENT_DEFINITIONS = {
+    risk: {
+        title: "産後うつ・児童虐待総合評価",
+        levels: [
+            { score: 5, label: "安心・良好", desc: "全く懸念がない状態。\n保護者の表情も明るく、お子様も衛生・情緒ともに安定している。\n部屋も安全に保たれている。" },
+            { score: 4, label: "通常", desc: "一般的な家庭の状態。\n多少の疲れや散らかりはあるが、保育に支障はなく、親子の関わりも標準的。" },
+            { score: 3, label: "要観察", desc: "「少し気になる」レベル。\n保護者がひどく疲れている、部屋が不衛生になりつつある、子供の情緒が少し不安定など。\n※次回の担当者に引き継ぎたい内容がある。" },
+            { score: 2, label: "注意", desc: "明らかに異変を感じる状態。\n保護者の反応が鈍い（無視・無表情）、子供の体や服が著しく汚れている、怒鳴り声が多いなど。\n※管理者への報告を強く推奨。" },
+            { score: 1, label: "危険・緊急", desc: "緊急の介入が必要な状態。\n明らかな虐待の痕跡（あざ・傷）、育児放棄（ネグレクト）、保護者の心身耗弱が激しく子供の安全が守れない。\n※直ちに管理者に電話連絡が必要。" }
+        ]
+    },
+    es: {
+        title: "従業員満足度(ES)",
+        levels: [
+            { score: 5, label: "最高", desc: "ぜひまた担当したい（優先希望）。\n顧客の態度が非常に良く、感謝されており、環境も快適。\n精神的にも報酬以上のやりがいを感じる。" },
+            { score: 4, label: "良", desc: "問題なく担当できる。\n常識的な対応をしていただき、業務遂行にストレスがない。\n標準的な「良いお客様」。" },
+            { score: 3, label: "可", desc: "担当しても良い（許容範囲）。\n多少のやりにくさ（細かい指示や部屋の環境など）はあるが、仕事として割り切れる範囲。" },
+            { score: 2, label: "難あり", desc: "できれば担当したくない（回避希望）。\n高圧的な態度、契約外の要求が多い、部屋が極端に不衛生などで、精神的・体力的に消耗が激しい。" },
+            { score: 1, label: "NG", desc: "二度と担当できない（ブラック）。\nハラスメント（暴言・セクハラ）、身の危険を感じる、著しい契約違反など。\n※担当を外れることを希望するレベル。" }
+        ]
+    }
+};
+
 /**
  * Retrieves UI configuration (placeholders, hints) from the prompt sheet.
  */
@@ -1157,7 +1211,8 @@ function getUiConfig() {
         dailyPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_DAILY),
         accidentPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_ACCIDENT),
         accidentHint: getPrompt(PROMPT_KEYS.HINT_ACCIDENT),
-        hiyariPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_HIYARI)
+        hiyariPlaceholder: getPrompt(PROMPT_KEYS.PLACEHOLDER_HIYARI),
+        assessments: ASSESSMENT_DEFINITIONS
     };
 }
 
@@ -1193,7 +1248,7 @@ function getCustomerReports(customerId) {
     };
 
     // Daily Reports
-    // Index: 0=Time, 3=Staff, 4=CustId, 6=Original, 7=Internal, 8=Customer
+    // Index: 0=Time, 3=Staff, 4=CustId, 6=Original, 7=Internal, 8=Customer, 9=Risk, 10=ES
     scanSheet(REPORT_SHEET_NAME, (row) => {
         // ID check
         if (String(row[4]) !== String(customerId)) return null;
@@ -1203,7 +1258,9 @@ function getCustomerReports(customerId) {
             staff: row[3],
             original: row[6],
             internal: row[7],
-            customer: row[8]
+            customer: row[8],
+            risk: row[9],
+            es: row[10]
         };
     });
 
