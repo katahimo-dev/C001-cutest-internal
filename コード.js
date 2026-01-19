@@ -469,6 +469,7 @@ function extractAmountFromImage(base64Image) {
 
 // --- Firestore Integration ---
 function getFirestore() {
+    /*
     const props = PropertiesService.getScriptProperties();
     const email = props.getProperty('FIREBASE_CLIENT_EMAIL');
     const key = props.getProperty('FIREBASE_PRIVATE_KEY');
@@ -480,6 +481,8 @@ function getFirestore() {
     }
 
     return FirestoreApp.getFirestore(email, key.replace(/\\n/g, '\n'), projectId);
+    */
+    return null;
 }
 
 /**
@@ -531,6 +534,8 @@ function saveReport(reportData) {
     ]);
 
     // --- Firestore Write ---
+    // --- Firestore Write ---
+    /*
     const firestore = getFirestore();
     if (firestore) {
         try {
@@ -555,6 +560,7 @@ function saveReport(reportData) {
             console.error("Firestore Write Error: " + e.message);
         }
     }
+    */
 
     // Handle Image Uploads with Amount
     let imageStatus = "No Images";
@@ -741,6 +747,8 @@ function saveAccidentReport(reportData) {
     ]);
 
     // --- Firestore Write (Accident) ---
+    // --- Firestore Write (Accident) ---
+    /*
     const firestore = getFirestore();
     if (firestore) {
         try {
@@ -769,6 +777,7 @@ function saveAccidentReport(reportData) {
             console.error("Firestore Write Error (Accident): " + e.message);
         }
     }
+    */
 
     // --- LineWorks Notification ---
     try {
@@ -1188,6 +1197,8 @@ function updateDatabaseFromLinesV2(rawString) {
 
     // Family DB Handling (Extract from CSV)
     // We still need to parse Family info to populate FAMILY_DB_NAME
+    // Family DB Handling (Extract from CSV)
+    // We still need to parse Family info to populate FAMILY_DB_NAME
     const idxFamily = headerRow.findIndex(h => h.includes('世帯') || h.includes('家族') || h.includes('Family'));
     const idxId = headerRow.findIndex(h => h.includes('顧客ID'));
 
@@ -1204,36 +1215,21 @@ function updateDatabaseFromLinesV2(rawString) {
             if (!id) continue;
 
             const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
-
             if (familyRaw) {
-                const blocks = familyRaw.split(/[\r\n]+/).filter(line => line.trim() !== "");
-                blocks.forEach(line => {
-                    const parts = line.trim().split(/[\s　]+/);
+                const parsedFamilies = parseFamilyInfo(familyRaw);
+                parsedFamilies.forEach(f => {
+                    // f: { name, dob, info }
+                    // Try to extract Allergy from info
+                    let allergy = "";
+                    let otherInfo = f.info;
 
-                    // Heuristic: Find DOB index
-                    let dobIndex = -1;
-                    for (let j = 0; j < parts.length; j++) {
-                        if (parts[j].match(/\d{4}\/\d{1,2}\/\d{1,2}/)) {
-                            dobIndex = j;
-                            break;
-                        }
-                    }
+                    // Simple heuristic to extract allergy
+                    // If info contains "アレルギー", try to extract closest segment
+                    // But for now, just putting everything in info is safer, or column alignment
+                    // The user prompt had specific "アレルギー:..." or "アレルギーなし"
 
-                    if (dobIndex !== -1) {
-                        const fName = parts.slice(0, dobIndex).join(" ");
-                        const fDob = parts[dobIndex];
-                        const fJob = (dobIndex + 1 < parts.length) ? parts[dobIndex + 1] : "";
-                        const fAllergy = (dobIndex + 2 < parts.length) ? parts[dobIndex + 2] : "";
-                        const fInfo = (dobIndex + 3 < parts.length) ? parts.slice(dobIndex + 3).join(" ") : "";
-                        fRows.push([id, fName, fDob, fJob, fAllergy, fInfo]);
-                    } else {
-                        // Fallback
-                        if (parts.length > 0) {
-                            const fName = parts[0] + (parts.length > 1 ? " " + parts[1] : "");
-                            const fRest = parts.slice(2).join(" ");
-                            fRows.push([id, fName, "", "", "", fRest]);
-                        }
-                    }
+                    // We will put everything else in "備考" for now, as splitting Job/Allergy is ambiguous without named fields
+                    fRows.push([id, f.name, f.dob, "", "", otherInfo]);
                 });
             }
         }
@@ -1247,6 +1243,197 @@ function updateDatabaseFromLinesV2(rawString) {
     PropertiesService.getScriptProperties().setProperty('DATA_VERSION', String(Date.now()));
 
     return "Upload Successful";
+}
+
+/**
+ * Parses raw family text block into structured objects.
+ * Handles various formats: YYYY.MM.DD, YYYYMMDD, Japanese Era, etc.
+ * Supports multi-line blocks.
+ */
+function parseFamilyInfo(rawText) {
+    const results = [];
+    if (!rawText) return results;
+
+    // Normalize newlines
+    const lines = rawText.split(/[\r\n]+/);
+
+    // Regex for Dates
+    // Supports:
+    // 1. YYYY.MM.DD, YYYY/MM/DD, YYYY-MM-DD
+    // 2. YYYY年M月D日
+    // 3. 和暦 (明治|大正|昭和|平成|令和|M|T|S|H|R)N(.|年)M(.|月)D(日)
+    // 4. Compact 8 digit: 19860921
+    // Case insensitive flag 'i' is used.
+    const reDate = /((?:19|20)\d{2}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2}|(?:明治|大正|昭和|平成|令和|[MTSHR])\.?\s*[0-9元]+[\.\-年]\s*[0-9]+[\.\-月]\s*[0-9]+(?:日|生)?|(?:19|20)\d{6})/gi;
+
+    let current = null;
+
+    const flush = () => {
+        if (current && (current.name || current.dob)) {
+            // Join info array
+            current.info = current.infoList.join(" ");
+            delete current.infoList;
+            results.push(current);
+        }
+        current = { name: "", dob: "", infoList: [] };
+    };
+
+    // Initialize first person
+    current = { name: "", dob: "", infoList: [] };
+
+    lines.forEach(line => {
+        let clean = line.trim();
+        if (!clean) return;
+
+        // Check for Date
+        reDate.lastIndex = 0;
+        const match = reDate.exec(clean);
+
+        if (match) {
+            const dateStr = match[0];
+            const idx = match.index;
+            const pre = clean.substring(0, idx).trim();
+            const post = clean.substring(idx + dateStr.length).trim();
+
+            // Detect if this is a "Property Line" (e.g. "生年月日: 1990...")
+            // or an "Inline Name Line" (e.g. "Name 1990...")
+            const isProperty = /生年月日|誕生日|DOB|Date/.test(pre) || pre.endsWith(":") || pre.endsWith("：");
+
+            if (isProperty) {
+                // Determine format:
+                // If current person already has DOB, this must be a new person (or error, but assume new)
+                // UNLESS valid Name was just set previously (e.g. L1: Name, L2: DOB)
+                if (current.dob && !current.justStarted) {
+                    flush();
+                }
+                current.dob = normalizeDateStr(dateStr);
+                // 'pre' is likely label, ignore. 'post' might be info.
+                if (post) current.infoList.push(post);
+                current.justStarted = false; // logic handled
+            } else {
+                // Likely "Name Date Info" format
+                // If we already have a partial person with Name only, and this line has NO name (Pre is empty), then it's that person's DOB.
+                if (current.name && !current.dob && pre === "") {
+                    current.dob = normalizeDateStr(dateStr);
+                    if (post) current.infoList.push(post);
+                    current.justStarted = false;
+                } else {
+                    // Otherwise, it's a fully self-contained line OR a new person line
+                    // Flush previous if exists
+                    if (current.name || current.dob) flush();
+
+                    current.name = pre; // Name is before date
+                    current.dob = normalizeDateStr(dateStr);
+                    if (post) current.infoList.push(post);
+                    current.justStarted = true; // Mark as fresh to capture subsequent info lines
+                }
+            }
+        } else {
+            // No Date Found on this line
+            // Is it Name or Info?
+
+            // Heuristics for Info
+            const infoKeywords = ["職業", "勤務", "園", "学校", "社", "アレルギー", "疾患", "病", "薬", "申請", "検討", "利用", "金額", "備考", "共有", "男児", "女児", "時", "分"];
+            const isInfoKey = infoKeywords.some(k => clean.includes(k));
+            const isLong = clean.length > 20;
+
+            // Heuristics for Name (Start of new block)
+            // If current person is "Complete" (has DOB) and line looks like a Name -> Flush and Start New
+            // If current person is Empty, this is Name.
+
+            const isLikelyName = !isInfoKey && !isLong;
+
+            if (current.dob) {
+                // Current person has DOB. 
+                // If this line looks like a Name, start new person.
+                // UNLESS it's just a short remark? e.g. "主婦"
+                if (isLikelyName && !["主婦", "夫", "妻", "パート", "学生", "無職", "会社員", "自営業"].includes(clean)) {
+                    flush();
+                    current.name = clean;
+                    current.justStarted = true;
+                } else {
+                    current.infoList.push(clean);
+                }
+            } else {
+                // No DOB yet.
+                if (!current.name) {
+                    // Empty person. Assume Name.
+                    if (isLikelyName) {
+                        current.name = clean;
+                        current.justStarted = true;
+                    } else {
+                        // Weird to have info before name, but maybe partial?
+                        // Or general note. Attach to current (which is empty) or previous?
+                        // Just stash it.
+                        current.infoList.push(clean);
+                    }
+                } else {
+                    // Has Name, No DOB. 
+                    // This line is likely intermediate info or multi-line name?
+                    // "夫 \n 鎌弥" -> handled by regex? No.
+                    // If Name="夫", and this line="鎌弥", merge?
+                    // If Line 1 was very short (<3 chars) and "Role-like", maybe append?
+                    if (current.name.length < 5 && isLikelyName) {
+                        current.name += " " + clean;
+                    } else {
+                        current.infoList.push(clean);
+                    }
+                }
+            }
+        }
+    });
+
+    flush(); // Final flush to capture last person
+
+    return results;
+}
+
+/**
+ * Normalizes date string to YYYY/MM/DD format.
+ */
+function normalizeDateStr(dateStr) {
+    if (!dateStr) return "";
+
+    // Remove '生' suffix if matched
+    let str = dateStr.replace(/生$/, '').trim();
+
+    // 1. Compact 8 digit: 19860921
+    if (/^\d{8}$/.test(str)) {
+        return str.substring(0, 4) + '/' + str.substring(4, 6) + '/' + str.substring(6, 8);
+    }
+
+    // 2. Japanese Era (Kanji or Alpha, Dot or Kanji Separator)
+    // Matches: S59.5.9, 昭和59年5月9日, R5.12.21
+    const eraMatch = str.match(/^([明治大正昭和平成令和MTSHR])\.?\s*([0-9元]+)[\.\-年]\s*([0-9]+)[\.\-月]\s*([0-9]+)(?:日)?$/i);
+    if (eraMatch) {
+        let era = eraMatch[1];
+        let year = (eraMatch[2] === '元') ? 1 : parseInt(eraMatch[2], 10);
+        const month = parseInt(eraMatch[3], 10);
+        const day = parseInt(eraMatch[4], 10);
+
+        // Normalize alpha to Kanji
+        if (/m/i.test(era)) era = '明治';
+        else if (/t/i.test(era)) era = '大正';
+        else if (/s/i.test(era)) era = '昭和';
+        else if (/h/i.test(era)) era = '平成';
+        else if (/r/i.test(era)) era = '令和';
+
+        if (era === '明治') year += 1867;
+        else if (era === '大正') year += 1911;
+        else if (era === '昭和') year += 1925;
+        else if (era === '平成') year += 1988;
+        else if (era === '令和') year += 2018;
+
+        return `${year}/${month}/${day}`;
+    }
+
+    // 3. Standard YYYY.MM.DD or YYYY-MM-DD
+    // Replace '年' '月' '.' '-' with '/'
+    let norm = str
+        .replace(/[年月\.\-]/g, '/')
+        .replace(/日/g, '');
+
+    return norm;
 }
 
 
@@ -1292,60 +1479,15 @@ function getUiConfig() {
  * Returns both Daily and Accident reports, sorted by date (newest first).
  */
 function getCustomerReports(customerId, startAfterTime) {
-    const limit = 20;
+    const limit = 5;
 
-    // --- Firestore Read ---
-    try {
-        const firestore = getFirestore();
-        if (firestore) {
-            // Index exists: Sort by timestamp desc on server
-            let query = firestore.query("reports")
-                .Where("customerId", "==", String(customerId))
-                .OrderBy("timestamp", "desc");
-
-            if (startAfterTime) {
-                query = query.StartAfter(startAfterTime);
-            }
-
-            const docs = query.Limit(limit).Execute();
-
-            console.log("Firestore Docs Found: " + (docs ? docs.length : "null"));
-
-            if (docs && docs.length > 0) {
-                return docs.map(doc => {
-                    const d = doc.obj || doc;
-                    if (d.type === 'accident') {
-                        return {
-                            type: 'accident',
-                            timestamp: d.timestamp,
-                            staff: d.staffName,
-                            accidentContent: d.accidentContent,
-                            situation: d.situation,
-                            prevention: d.prevention
-                        };
-                    } else {
-                        return {
-                            type: 'daily',
-                            timestamp: d.timestamp,
-                            staff: d.staffName,
-                            original: d.inputText,
-                            internal: d.internalText,
-                            customer: d.customerText,
-                            risk: d.riskRating,
-                            es: d.esRating
-                        };
-                    }
-                });
-            } else if (startAfterTime) {
-                return [];
-            }
-        }
-    } catch (e) {
-        console.warn("Firestore Read Error (Using Sheet Fallback): " + e.message);
-    }
+    // --- Firestore Read (Skipped) ---
 
     // --- Sheet Fallback ---
-    if (startAfterTime) return []; // Fallback only supports initial load
+
+    // NOTE: This approach reads all data then filters. 
+    // For much larger datasets, we would need to read only the bottom N rows.
+    // However, given user request for "Load More" and speed, sending small chunks is the main win here.
 
     const ss = getSpreadsheet();
     const results = [];
@@ -1362,10 +1504,11 @@ function getCustomerReports(customerId, startAfterTime) {
         const lastRow = sheet.getLastRow();
         if (lastRow < 2) return;
 
-        // Read all data (Header is row 1, data starts row 2)
+        // Optimization Idea: If we knew exactly where the time limit was, we could range read.
+        // For now, read all is safest for correctness with mixed report types.
         const values = sheet.getDataRange().getValues();
 
-        // Loop backwards (Newest usually at bottom)
+        // Loop backwards
         for (let i = values.length - 1; i >= 1; i--) {
             const row = values[i];
             const res = mapFn(row);
@@ -1374,9 +1517,7 @@ function getCustomerReports(customerId, startAfterTime) {
     };
 
     // Daily Reports
-    // Index: 0=Time, 3=Staff, 4=CustId, 6=Original, 7=Internal, 8=Customer, 9=Risk, 10=ES
     scanSheet(REPORT_SHEET_NAME, (row) => {
-        // ID check
         if (String(row[4]) !== String(customerId)) return null;
         return {
             type: 'daily',
@@ -1391,14 +1532,12 @@ function getCustomerReports(customerId, startAfterTime) {
     });
 
     // Accident Reports
-    // Index: 0=Time, 1=Staff, 2=CustId, 7=Loc, 8=Content, 9=Sit, 10=Resp, 11=Parent, 12=Diag, 13=Prev, 14=Original
     scanSheet(ACCIDENT_SHEET_NAME || '事故報告', (row) => {
         if (String(row[2]) !== String(customerId)) return null;
 
-        // Construct formatted internal report from structured fields
         const parts = [];
-        if (row[6]) parts.push(`【発生時間】${row[6]}`); // OccTime
-        if (row[7]) parts.push(`【場所】${row[7]}`); // Loc
+        if (row[6]) parts.push(`【発生時間】${row[6]}`);
+        if (row[7]) parts.push(`【場所】${row[7]}`);
         if (row[9]) parts.push(`【状況】\n${row[9]}`);
         if (row[8]) parts.push(`【事故内容】\n${row[8]}`);
         if (row[10]) parts.push(`【応急処置】\n${row[10]}`);
@@ -1413,7 +1552,7 @@ function getCustomerReports(customerId, startAfterTime) {
             staff: row[1],
             original: row[14],
             internal: internalText,
-            customer: row[11], // Parent Correspondence
+            customer: row[11],
             isAccident: true,
             subtype: row[15] || '事故報告'
         };
@@ -1426,7 +1565,27 @@ function getCustomerReports(customerId, startAfterTime) {
         return db - da; // Descending
     });
 
-    return results;
+    // Pagination Logic
+    let startIndex = 0;
+    if (startAfterTime) {
+        // Find the index of the item that matches startAfterTime
+        // And start from the next one.
+        // Since timestamps might be non-unique, strictly finding the object is hard without distinct ID.
+        // We will assume checking timestamp < startAfterTime is enough for "next page".
+
+        const startTime = new Date(startAfterTime).getTime();
+
+        // Find first item that is strictly older than startAfterTime
+        // (Since sorted descending, we look for timestamp < startTime)
+        // However, if we have duplicate timestamps, this skips all of them.
+        // A simple array scan findIndex is better if we assume results are consistent.
+        // But since sheet might have been modified, filtering by time is more robust.
+
+        const filtered = results.filter(r => new Date(r.timestamp).getTime() < startTime);
+        return filtered.slice(0, limit);
+    }
+
+    return results.slice(0, limit);
 }
 
 /**

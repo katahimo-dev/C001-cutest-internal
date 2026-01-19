@@ -960,6 +960,10 @@
                     }
                     document.getElementById('accidentResultArea').classList.add('hidden');
 
+                    // Show Assessment in Daily Mode
+                    const assessSec = document.getElementById('assessmentSection');
+                    if (assessSec) assessSec.classList.remove('hidden');
+
                 } else {
                     tabDaily.className = "flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors";
                     tabAccident.className = "flex-1 py-3 text-sm font-medium text-red-600 border-b-2 border-red-600 transition-colors";
@@ -972,6 +976,10 @@
                     typeSelector.classList.remove('hidden');
 
                     if (imageSection) imageSection.classList.add('hidden');
+
+                    // Hide Assessment in Accident Mode
+                    const assessSec = document.getElementById('assessmentSection');
+                    if (assessSec) assessSec.classList.add('hidden');
 
                     // Update Placeholder based on selection
                     updateAccidentPlaceholder();
@@ -1353,7 +1361,7 @@
 
                 if (!isLoadMore) {
                     timeline.innerHTML = '';
-                    if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+                    if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
                 }
 
                 loader.classList.remove('hidden');
@@ -1379,7 +1387,7 @@
                     renderHistoryTimeline(reports, isLoadMore);
 
                     if (loadMoreContainer) {
-                        if (reports.length >= 20) {
+                        if (reports.length >= 5) {
                             loadMoreContainer.classList.remove('hidden');
                         } else {
                             loadMoreContainer.classList.add('hidden');
@@ -1750,86 +1758,92 @@
                 const btn = document.getElementById('saveBtn');
                 if (btn.disabled) return; // Extra safety check
 
-                btn.disabled = true;
-                btn.textContent = '保存中...';
+                try {
+                    if (!currentCustomer) {
+                        showToast("エラー: 顧客情報が見つかりません。画面を開き直してください。", true);
+                        return;
+                    }
 
-                // Format Date
-                const y = reportTargetDate.getFullYear();
-                const m = (reportTargetDate.getMonth() + 1).toString().padStart(2, '0');
-                const d = reportTargetDate.getDate().toString().padStart(2, '0');
-                const dateStr = `${y}/${m}/${d}`;
+                    btn.disabled = true;
+                    btn.textContent = '保存中...';
 
-                if (currentReportMode === 'daily') {
-                    const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
-                    const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+                    // Format Date
+                    const y = reportTargetDate.getFullYear();
+                    const m = (reportTargetDate.getMonth() + 1).toString().padStart(2, '0');
+                    const d = reportTargetDate.getDate().toString().padStart(2, '0');
+                    const dateStr = `${y}/${m}/${d}`;
 
-                    google.script.run.withSuccessHandler((res) => {
-                        const msg = (res && res.message) ? res.message : '保存しました';
-                        // Determine if it was a "success" in terms of saving data
-                        // saveReport returns { success: true/false. message: ... }
-                        // If images failed but text saved, success is true.
+                    if (currentReportMode === 'daily') {
+                        const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+                        const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
 
-                        const isError = (res && !res.success);
-                        const isWarning = (res && res.message && res.message.includes('失敗')); // Image warning
+                        google.script.run.withSuccessHandler((res) => {
+                            const msg = (res && res.message) ? res.message : '保存しました';
+                            const isError = (res && !res.success);
+                            const isWarning = (res && res.message && res.message.includes('失敗'));
+                            showToast(msg, isError || isWarning);
 
-                        showToast(msg, isError || isWarning);
-
-                        if (res && res.success) {
-                            // Report text saved successfully (even if image warning). Close modal to prevent duplicate.
-                            closeModal();
-                            // Button remains disabled while modal fades out
-                        } else {
-                            // Report failed to save (e.g. validaton error in GAS?)
+                            if (res && res.success) {
+                                closeModal();
+                            } else {
+                                btn.disabled = false;
+                                btn.textContent = '保存する';
+                            }
+                        }).withFailureHandler(e => {
+                            showToast('Error: ' + e.message, true);
                             btn.disabled = false;
                             btn.textContent = '保存する';
-                        }
-                    }).withFailureHandler(e => {
-                        showToast('Error: ' + e.message, true);
-                        btn.disabled = false;
-                        btn.textContent = '保存する';
-                    }).saveReport({
-                        customerId: currentCustomer.id,
-                        customerName: currentCustomer.name,
-                        inputText: document.getElementById('reportInput').value,
-                        start: start,
-                        end: end,
-                        internalText: document.getElementById('internalResult').value,
-                        customerText: document.getElementById('customerResult').value,
-                        staffName: currentStaffName,
-                        images: currentImages,
-                        riskRating: assessmentRatings.risk,
-                        esRating: assessmentRatings.es,
-                        reportDate: dateStr
-                    });
-                } else {
-                    // Save Accident
-                    const reportType = document.querySelector('input[name="accType"]:checked').value;
+                        }).saveReport({
+                            customerId: currentCustomer.id,
+                            customerName: currentCustomer.name,
+                            inputText: document.getElementById('reportInput').value,
+                            start: start,
+                            end: end,
+                            internalText: document.getElementById('internalResult').value,
+                            customerText: document.getElementById('customerResult').value,
+                            staffName: currentStaffName,
+                            images: currentImages,
+                            riskRating: assessmentRatings.risk,
+                            esRating: assessmentRatings.es,
+                            reportDate: dateStr
+                        });
+                    } else {
+                        // Save Accident
+                        let reportType = "事故報告";
+                        const typeEl = document.querySelector('input[name="accType"]:checked');
+                        if (typeEl) reportType = typeEl.value;
 
-                    google.script.run.withSuccessHandler(() => {
-                        showToast(reportType + 'を保存しました');
-                        closeModal();
-                    }).withFailureHandler(e => {
-                        showToast('Error: ' + e.message, true);
-                        btn.disabled = false;
-                        btn.textContent = '保存する';
-                    }).saveAccidentReport({
-                        customerId: currentCustomer.id,
-                        customerName: currentCustomer.name,
-                        staffName: currentStaffName,
-                        targetName: document.getElementById('accTargetName').value,
-                        targetDob: document.getElementById('accTargetDob').value,
-                        inputText: document.getElementById('reportInput').value,
-                        occurrenceTime: document.getElementById('accOccurrenceTime').value,
-                        location: document.getElementById('accLocation').value,
-                        accidentContent: document.getElementById('accContent').value,
-                        situation: document.getElementById('accSituation').value,
-                        immediateResponse: document.getElementById('accResponse').value,
-                        parentCorrespondence: document.getElementById('accParentCorrespondence').value,
-                        diagnosisTreatment: document.getElementById('accDiagnosis').value,
-                        prevention: document.getElementById('accPrevention').value,
-                        reportType: reportType,
-                        reportDate: dateStr
-                    });
+                        google.script.run.withSuccessHandler(() => {
+                            showToast(reportType + 'を保存しました');
+                            closeModal();
+                        }).withFailureHandler(e => {
+                            showToast('Error: ' + e.message, true);
+                            btn.disabled = false;
+                            btn.textContent = '保存する';
+                        }).saveAccidentReport({
+                            customerId: currentCustomer.id,
+                            customerName: currentCustomer.name,
+                            staffName: currentStaffName,
+                            targetName: document.getElementById('accTargetName').value,
+                            targetDob: document.getElementById('accTargetDob').value,
+                            inputText: document.getElementById('reportInput').value,
+                            occurrenceTime: document.getElementById('accOccurrenceTime').value,
+                            location: document.getElementById('accLocation').value,
+                            accidentContent: document.getElementById('accContent').value,
+                            situation: document.getElementById('accSituation').value,
+                            immediateResponse: document.getElementById('accResponse').value,
+                            parentCorrespondence: document.getElementById('accParentCorrespondence').value,
+                            diagnosisTreatment: document.getElementById('accDiagnosis').value,
+                            prevention: document.getElementById('accPrevention').value,
+                            reportType: reportType,
+                            reportDate: dateStr
+                        });
+                    }
+                } catch (e) {
+                    console.error(e);
+                    showToast("クライアントエラー: " + e.message, true);
+                    btn.disabled = false;
+                    btn.textContent = '保存する';
                 }
             }
 
