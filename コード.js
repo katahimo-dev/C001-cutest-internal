@@ -373,7 +373,7 @@ function getData() {
                 // Anonymize details as well
                 if (h === '姓' || h === '名' || h.includes('氏名')) {
                     val = anonymizeName(val);
-                } else if (h.includes('住所')) {
+                } else if (h.includes('住所') || h.includes('駐車場')) {
                     val = anonymizeAddr(val);
                 } else if (isPoc && (h.includes('世帯') || h.includes('家族'))) {
                     // Reduce entire household info for PoC to avoid leaking names
