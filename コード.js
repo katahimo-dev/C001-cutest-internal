@@ -2,6 +2,26 @@
 // Web App Logic
 // ==========================================
 
+const POC_CONFIG_KEY = "POC_ANONYMIZE_MODE";
+
+/**
+ * Gets the PoC Anonymize configuration.
+ */
+function getPocConfig() {
+    const props = PropertiesService.getScriptProperties();
+    return props.getProperty(POC_CONFIG_KEY) === 'true';
+}
+
+/**
+ * Saves the PoC Anonymize configuration.
+ * Only admins should call this.
+ */
+function savePocConfig(isEnabled) {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty(POC_CONFIG_KEY, String(isEnabled));
+    return { success: true, message: "PoC設定を保存しました" };
+}
+
 const SPREADSHEET_ID = '1Y0ciyR4LHwCPwIkcuqwhQnD9k_-WBHn0nnwNRzFaacM';
 const TARGET_GID = 1224762512;
 const PROMPT_SHEET_NAME = 'ＡＩプロンプト';
@@ -181,6 +201,11 @@ function getSheetByGid(ss, gid) {
  * Fetches Customer data from the specified Spreadsheet/Sheet.
  * Returns full data for detailed view.
  */
+/**
+ * Fetches Customer data from the specified Spreadsheet/Sheet.
+ * Returns full data for detailed view.
+ * [PoC Mode] Anonymizes sensitive data.
+ */
 function getData() {
     const ss = getSpreadsheet();
     let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
@@ -222,6 +247,72 @@ function getData() {
         return toStr(val);
     };
 
+    // --- Anonymization Helpers ---
+    const isPoc = getPocConfig();
+
+    // Shift Kanji codes to create fake names
+    const anonymizeName = (str) => {
+        if (!isPoc || !str) return str || "";
+        return str.split('').map(c => {
+            const code = c.charCodeAt(0);
+            if (code >= 0x4E00 && code <= 0x9FFF) {
+                return String.fromCharCode(code + Math.floor(Math.random() * 50) + 1);
+            }
+            if (code >= 0x3040 && code <= 0x30FF) {
+                return String.fromCharCode(code + Math.floor(Math.random() * 10) + 1);
+            }
+            return c;
+        }).join('');
+    };
+
+    const anonymizeAddr = (str) => {
+        if (!isPoc || !str) return str || "";
+
+        let prefix = "東京都新宿区";
+
+        // 1. Extract Prefecture (Optional)
+        let pref = "";
+        const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)\s*/;
+        const prefMatch = str.match(prefRegex);
+        let remainder = str;
+
+        if (prefMatch) {
+            pref = prefMatch[0];
+            remainder = str.substring(pref.length);
+        }
+
+        // 2. Try to match City + Ward in remainder (e.g. 仙台市泉区)
+        const cityWardMatch = remainder.match(/^([^0-9\s]+市[^0-9\s]+区)/);
+
+        if (cityWardMatch) {
+            prefix = pref + cityWardMatch[1];
+        } else {
+            // 3. If no City+Ward, match standard Municipality (City/Ward/Town/Village)
+            const muniMatch = remainder.match(/^([^0-9\s]+[市区町村])/);
+            if (muniMatch) {
+                prefix = pref + muniMatch[1];
+            } else if (pref) {
+                // If matches nothing but pref exists (rare), use pref
+                prefix = pref;
+            }
+        }
+
+        return `${prefix} XXXX-X-X`;
+    };
+
+    const anonymizeContact = (key, val) => {
+        if (!isPoc || !val) return val || "";
+        if (key.includes('メール') || key.toLowerCase().includes('email')) {
+            return `user_${Math.floor(Math.random() * 10000)}@example.com`;
+        }
+        if (key.includes('電話') || key.toLowerCase().includes('tel') || key.toLowerCase().includes('phone')) {
+            // Mask last 4 digits
+            return `090-${Math.floor(Math.random() * 9000 + 1000)}-XXXX`;
+        }
+        return val;
+    };
+    // ----------------------------
+
     // Map Families by CustomerID
     const familyMap = {};
     fRows.forEach(row => {
@@ -229,7 +320,7 @@ function getData() {
         if (!cId) return;
         if (!familyMap[cId]) familyMap[cId] = [];
         familyMap[cId].push({
-            name: toStr(row[1]),
+            name: anonymizeName(toStr(row[1])),
             dob: fmtDate(row[2]),
             job: toStr(row[3]),
             allergy: toStr(row[4]),
@@ -253,18 +344,13 @@ function getData() {
             name = "Unknown";
         }
         name = name.trim();
+        const displayName = anonymizeName(name);
 
         const address = idxAddr !== undefined ? toStr(row[idxAddr]) : "";
+        const displayAddress = anonymizeAddr(address);
+
         const lat = idxLat !== undefined ? row[idxLat] : "";
         const lng = idxLng !== undefined ? row[idxLng] : "";
-
-        const fmtDateTime = (val) => {
-            if (val instanceof Date) {
-                return Utilities.formatDate(val, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
-            }
-            return toStr(val);
-        };
-
 
         // Build Full Data Object (excluding sensitive)
         // Use array to guarantee order
@@ -284,27 +370,51 @@ function getData() {
                 }
             } else {
                 val = toStr(val);
+                // Anonymize details as well
+                if (h === '姓' || h === '名' || h.includes('氏名')) {
+                    val = anonymizeName(val);
+                } else if (h.includes('住所')) {
+                    val = anonymizeAddr(val);
+                } else if (isPoc && (h.includes('世帯') || h.includes('家族'))) {
+                    // Reduce entire household info for PoC to avoid leaking names
+                    val = "（匿名化された情報）";
+                } else {
+                    val = anonymizeContact(h, val);
+                }
             }
 
             orderedDetails.push({ key: h, value: val });
         });
 
-        // Extract City
+        // Extract City (Use Display Address for display)
         let city = '';
-        if (address) {
-            const cityMatch = address.match(/(?:東京都|北海道|(?:京都|大阪)府|.{2,3}県)([^市区町村]+[市区町村])/);
-            if (cityMatch) {
-                city = cityMatch[1];
+        if (displayAddress) {
+            let dPref = "";
+            let dRest = displayAddress;
+            const pMatch = displayAddress.match(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)\s*/);
+
+            if (pMatch) {
+                dPref = pMatch[0];
+                dRest = displayAddress.substring(dPref.length);
+            }
+
+            // 1. Try "City + Ward" on remainder
+            const cwMatch = dRest.match(/^([^0-9\s]+市[^0-9\s]+区)/);
+            if (cwMatch) {
+                city = cwMatch[1];
             } else {
-                const simpleMatch = address.match(/^([^0-9]+?[市区町村])/);
-                if (simpleMatch) city = simpleMatch[1];
+                // 2. Fallback to Municipality
+                const mMatch = dRest.match(/^([^0-9\s]+[市区町村])/);
+                if (mMatch) {
+                    city = mMatch[1];
+                }
             }
         }
 
         return {
             id: id,
-            name: name,
-            address: address,
+            name: displayName,
+            address: displayAddress,
             city: city,
             lat: lat,
             lng: lng,
@@ -1257,33 +1367,64 @@ function parseFamilyInfo(rawText) {
     // Normalize newlines
     const lines = rawText.split(/[\r\n]+/);
 
-    // Regex for Dates
+    // Regex for Dates - COMPREHENSIVE v2
     // Supports:
     // 1. YYYY.MM.DD, YYYY/MM/DD, YYYY-MM-DD
     // 2. YYYY年M月D日
-    // 3. 和暦 (明治|大正|昭和|平成|令和|M|T|S|H|R)N(.|年)M(.|月)D(日)
-    // 4. Compact 8 digit: 19860921
-    // Case insensitive flag 'i' is used.
-    const reDate = /((?:19|20)\d{2}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2}|(?:明治|大正|昭和|平成|令和|[MTSHR])\.?\s*[0-9元]+[\.\-年]\s*[0-9]+[\.\-月]\s*[0-9]+(?:日|生)?|(?:19|20)\d{6})/gi;
+    // 3. 和暦 (明治|大正|昭和|平成|令和)N年M月D日 (with or without spaces)
+    // 4. Abbreviated era: H1.10.16, h5.12.29, r3.5.14 (case insensitive, with optional 生)
+    // 5. Abbreviated era with slash: H4/8/5
+    // 6. Kanji era with dots: 令和5.9.25
+    // 7. Compact 8 digit: 19860921
+    const reDate = /((?:19|20)\d{2}[\.\\/\-]\d{1,2}[\.\\/\-]\d{1,2}|(?:明治|大正|昭和|平成|令和)\s*[0-9元]+\s*[\.\-年]\s*[0-9]+\s*[\.\-月]\s*[0-9]+\s*日?|(?:19|20)\d{2}年\d{1,2}月\d{1,2}日?|[MTSHRmtshr]\d{1,2}[\.\\/]\d{1,2}[\.\\/]\d{1,2}(?:生)?|(?:19|20)\d{6})/gi;
 
     let current = null;
 
     const flush = () => {
         if (current && (current.name || current.dob)) {
+            // Clean up name: remove role indicators in parentheses
+            if (current.name) {
+                current.name = current.name.replace(/^\([^)]+\)\s*/, '').trim();
+            }
             // Join info array
             current.info = current.infoList.join(" ");
             delete current.infoList;
+            delete current.justStarted;
             results.push(current);
         }
-        current = { name: "", dob: "", infoList: [] };
+        current = { name: "", dob: "", infoList: [], justStarted: false };
     };
 
     // Initialize first person
-    current = { name: "", dob: "", infoList: [] };
+    current = { name: "", dob: "", infoList: [], justStarted: false };
 
     lines.forEach(line => {
         let clean = line.trim();
         if (!clean) return;
+
+        // Remove leading bullet (・)
+        if (clean.startsWith('・')) {
+            clean = clean.substring(1).trim();
+        }
+
+        // Handle parentheses format: "Name（Date、Info、...）"
+        // Extract content from parentheses and process separately
+        let inParens = false;
+        if (clean.includes('（') && clean.includes('）')) {
+            const parenMatch = clean.match(/^([^（]+)（([^）]+)）$/);
+            if (parenMatch) {
+                const name = parenMatch[1].trim();
+                const content = parenMatch[2].trim();
+                // Process as "Name Content" format
+                clean = name + ' ' + content.replace(/、/g, ' ');
+                inParens = true;
+            }
+        }
+
+        // Replace commas (、) with spaces for easier parsing
+        if (!inParens) {
+            clean = clean.replace(/、/g, ' ');
+        }
 
         // Check for Date
         reDate.lastIndex = 0;
@@ -1292,8 +1433,25 @@ function parseFamilyInfo(rawText) {
         if (match) {
             const dateStr = match[0];
             const idx = match.index;
-            const pre = clean.substring(0, idx).trim();
-            const post = clean.substring(idx + dateStr.length).trim();
+            let pre = clean.substring(0, idx).trim();
+            let post = clean.substring(idx + dateStr.length).trim();
+
+            // Remove role indicators from name (e.g., "(夫)" or "夫")
+            pre = pre.replace(/^\([^)]+\)\s*/, '').trim();
+
+            // Handle middle dot (・) separator: name is BEFORE the first middle dot
+            if (pre.includes('・')) {
+                const parts = pre.split('・');
+                pre = parts[0].trim(); // Take the FIRST part as name
+            }
+
+            // Handle middle dot in post as well - replace with space
+            if (post.startsWith('・')) {
+                post = post.substring(1).trim();
+            }
+            if (post.includes('・')) {
+                post = post.replace(/・/g, ' ');
+            }
 
             // Detect if this is a "Property Line" (e.g. "生年月日: 1990...")
             // or an "Inline Name Line" (e.g. "Name 1990...")
@@ -1333,7 +1491,7 @@ function parseFamilyInfo(rawText) {
             // Is it Name or Info?
 
             // Heuristics for Info
-            const infoKeywords = ["職業", "勤務", "園", "学校", "社", "アレルギー", "疾患", "病", "薬", "申請", "検討", "利用", "金額", "備考", "共有", "男児", "女児", "時", "分"];
+            const infoKeywords = ["職業", "勤務", "園", "学校", "社", "アレルギー", "疾患", "病", "薬", "申請", "検討", "利用", "金額", "備考", "共有", "男児", "女児", "時", "分", "保育園", "幼稚園", "未就学児", "母乳", "発達", "クラス", "理学療法士", "作業療法士", "公務員", "役員", "落花生", "いわし", "整備士", "医師"];
             const isInfoKey = infoKeywords.some(k => clean.includes(k));
             const isLong = clean.length > 20;
 
@@ -1347,7 +1505,7 @@ function parseFamilyInfo(rawText) {
                 // Current person has DOB. 
                 // If this line looks like a Name, start new person.
                 // UNLESS it's just a short remark? e.g. "主婦"
-                if (isLikelyName && !["主婦", "夫", "妻", "パート", "学生", "無職", "会社員", "自営業"].includes(clean)) {
+                if (isLikelyName && !["主婦", "夫", "妻", "パート", "学生", "無職", "会社員", "自営業", "ケアマネージャー", "介護職", "教員", "医師", "整備士", "保育士"].includes(clean)) {
                     flush();
                     current.name = clean;
                     current.justStarted = true;
@@ -1372,7 +1530,7 @@ function parseFamilyInfo(rawText) {
                     // This line is likely intermediate info or multi-line name?
                     // "夫 \n 鎌弥" -> handled by regex? No.
                     // If Name="夫", and this line="鎌弥", merge?
-                    // If Line 1 was very short (<3 chars) and "Role-like", maybe append?
+                    // If Line 1 was very short (<5 chars) and "Role-like", maybe append?
                     if (current.name.length < 5 && isLikelyName) {
                         current.name += " " + clean;
                     } else {
@@ -1402,21 +1560,14 @@ function normalizeDateStr(dateStr) {
         return str.substring(0, 4) + '/' + str.substring(4, 6) + '/' + str.substring(6, 8);
     }
 
-    // 2. Japanese Era (Kanji or Alpha, Dot or Kanji Separator)
-    // Matches: S59.5.9, 昭和59年5月9日, R5.12.21
-    const eraMatch = str.match(/^([明治大正昭和平成令和MTSHR])\.?\s*([0-9元]+)[\.\-年]\s*([0-9]+)[\.\-月]\s*([0-9]+)(?:日)?$/i);
+    // 2. Japanese Era (Kanji, with flexible spacing)
+    // Matches: 昭和59年5月9日, 平成5年1月14日, 令和7年7月17日
+    const eraMatch = str.match(/^(明治|大正|昭和|平成|令和)\s*([0-9元]+)\s*年\s*([0-9]+)\s*月\s*([0-9]+)\s*日?$/);
     if (eraMatch) {
         let era = eraMatch[1];
         let year = (eraMatch[2] === '元') ? 1 : parseInt(eraMatch[2], 10);
         const month = parseInt(eraMatch[3], 10);
         const day = parseInt(eraMatch[4], 10);
-
-        // Normalize alpha to Kanji
-        if (/m/i.test(era)) era = '明治';
-        else if (/t/i.test(era)) era = '大正';
-        else if (/s/i.test(era)) era = '昭和';
-        else if (/h/i.test(era)) era = '平成';
-        else if (/r/i.test(era)) era = '令和';
 
         if (era === '明治') year += 1867;
         else if (era === '大正') year += 1911;
@@ -1425,6 +1576,48 @@ function normalizeDateStr(dateStr) {
         else if (era === '令和') year += 2018;
 
         return `${year}/${month}/${day}`;
+    }
+
+    // 2b. Abbreviated Japanese Era (Alpha): H1.10.16, h5.12.29, r3.5.14, H4/8/5
+    // Case insensitive, supports both . and /
+    const abbrevMatch = str.match(/^([MTSHRmtshr])(\d{1,2})[\.\\/](\d{1,2})[\.\\/](\d{1,2})$/i);
+    if (abbrevMatch) {
+        let era = abbrevMatch[1].toUpperCase(); // Normalize to uppercase
+        let year = parseInt(abbrevMatch[2], 10);
+        const month = parseInt(abbrevMatch[3], 10);
+        const day = parseInt(abbrevMatch[4], 10);
+
+        // Convert alpha to base year
+        if (era === 'M') year += 1867;      // 明治
+        else if (era === 'T') year += 1911; // 大正
+        else if (era === 'S') year += 1925; // 昭和
+        else if (era === 'H') year += 1988; // 平成
+        else if (era === 'R') year += 2018; // 令和
+
+        return `${year}/${month}/${day}`;
+    }
+
+    // 2b2. Kanji era with dots: 令和5.9.25, 平成5.1.14
+    const kanjiDotMatch = str.match(/^(明治|大正|昭和|平成|令和)(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+    if (kanjiDotMatch) {
+        let era = kanjiDotMatch[1];
+        let year = parseInt(kanjiDotMatch[2], 10);
+        const month = parseInt(kanjiDotMatch[3], 10);
+        const day = parseInt(kanjiDotMatch[4], 10);
+
+        if (era === '明治') year += 1867;
+        else if (era === '大正') year += 1911;
+        else if (era === '昭和') year += 1925;
+        else if (era === '平成') year += 1988;
+        else if (era === '令和') year += 2018;
+
+        return `${year}/${month}/${day}`;
+    }
+
+    // 2c. Western calendar with 年月日: 1961年9月2日
+    const westernMatch = str.match(/^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/);
+    if (westernMatch) {
+        return `${westernMatch[1]}/${westernMatch[2]}/${westernMatch[3]}`;
     }
 
     // 3. Standard YYYY.MM.DD or YYYY-MM-DD

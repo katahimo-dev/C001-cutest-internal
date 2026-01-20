@@ -608,6 +608,14 @@
                                 class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
                             <p class="text-[10px] text-gray-400 mt-1">※ 全ユーザー共通の設定です</p>
                         </div>
+                        <div class="mt-4 pt-4 border-t border-gray-100">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="settingPocMode"
+                                    class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm font-bold text-gray-700">個人情報を匿名化する (PoCモード)</span>
+                            </label>
+                            <p class="text-[10px] text-gray-400 mt-1 pl-7">※ ONにすると、顧客名・住所・連絡先がランダムに置換されます (全ユーザー共通)</p>
+                        </div>
                     </div>
 
                 </div>
@@ -853,8 +861,9 @@
                 if (isAdmin === '1' || isAdmin === 'true') {
                     adminArea.classList.remove('hidden');
                     // Load current setting if Admin
-                    // To prevent flickering when reopening, only load if placeholder or empty
                     const input = document.getElementById('settingLwTargetId');
+                    const pocCheck = document.getElementById('settingPocMode');
+
                     if (input.value === "" || input.value === "Loading..." || input.value === "Error") {
                         input.value = "Loading...";
                         google.script.run.withSuccessHandler(id => {
@@ -863,6 +872,12 @@
                             input.value = "Error";
                         }).getLwTargetId();
                     }
+
+                    // Load PoC Mode Config
+                    google.script.run.withSuccessHandler(isPoc => {
+                        if (pocCheck) pocCheck.checked = isPoc;
+                    }).getPocConfig();
+
                 } else {
                     adminArea.classList.add('hidden');
                 }
@@ -892,31 +907,47 @@
             function saveSettings() {
                 const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
 
-                // Only save LineWorks ID if Admin and visible
+                // Only save Admin Settings if Admin
                 if (isAdmin === '1' || isAdmin === 'true') {
                     const newId = document.getElementById('settingLwTargetId').value;
-                    if (newId && newId !== "Loading..." && newId !== "Error") {
-                        const btn = document.querySelector('#settingsModal button[onclick="saveSettings()"]');
-                        const originalText = btn.textContent;
-                        btn.disabled = true;
-                        btn.textContent = "保存中...";
+                    const pocCheck = document.getElementById('settingPocMode');
+                    const isPoc = pocCheck ? pocCheck.checked : false;
 
-                        google.script.run.withSuccessHandler(res => {
+                    const btn = document.querySelector('#settingsModal button[onclick="saveSettings()"]');
+                    const originalText = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = "保存中...";
+
+                    // 1. Save LineWorks ID
+                    google.script.run.withSuccessHandler(res1 => {
+                        if (res1 && !res1.success) {
+                            console.error("LW ID Save Failed", res1);
+                        }
+
+                        // 2. Save PoC Config
+                        google.script.run.withSuccessHandler(res2 => {
                             btn.disabled = false;
                             btn.textContent = originalText;
-                            if (res.success) {
-                                showToast(res.message);
-                                closeSettings();
-                            } else {
-                                showToast("保存失敗: " + res, true);
-                            }
+
+                            showToast("設定を保存しました");
+                            closeSettings();
+
+                            // Reload Data to apply Anonymization changes
+                            loadData(true);
+
                         }).withFailureHandler(e => {
                             btn.disabled = false;
                             btn.textContent = originalText;
-                            showToast("Error: " + e.message, true);
-                        }).saveLwTargetId(newId);
-                        return; // Async save handles close
-                    }
+                            showToast("PoC設定保存エラー: " + e.message, true);
+                        }).savePocConfig(isPoc);
+
+                    }).withFailureHandler(e => {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                        showToast("LW ID保存エラー: " + e.message, true);
+                    }).saveLwTargetId(newId);
+
+                    return;
                 }
 
                 // If not admin or no changes to admin settings, just close
