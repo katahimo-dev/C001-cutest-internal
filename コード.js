@@ -547,17 +547,21 @@ function generateReportWithWarnings(inputData) {
 }
 
 /**
- * Extracts amount from receipt image
+ * Extracts amount and store name from receipt image
  */
 function extractAmountFromImage(base64Image) {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!apiKey) return { amount: "" };
+    if (!apiKey) return { amount: "", storeName: "" };
 
     const prompt = `
     Analyze the image of this receipt.
-    Identify the Total Amount (Total, 合計, 支払い金額).
-    Return the result in JSON format: {"amount": number}
+    Identify the following information:
+    1. Total Amount (Total, 合計, 支払い金額)
+    2. Store Name or Parking Name (レシートの一番上に表示されている店舗名や駐車場名)
+    
+    Return the result in JSON format: {"amount": number, "storeName": "string"}
     If the amount cannot be read, return {"amount": 0}.
+    If the store name cannot be read, return {"storeName": ""}.
     Do NOT include currency symbols in the number value.
     `;
 
@@ -572,7 +576,7 @@ function extractAmountFromImage(base64Image) {
 
     if (result.error) {
         console.error(result.error);
-        return { amount: 0 };
+        return { amount: 0, storeName: "" };
     }
     return result;
 }
@@ -605,128 +609,116 @@ function getFirestore() {
  * Saves the final report to 'Reports' sheet.
  */
 function saveReport(reportData) {
-    const ss = getSpreadsheet();
-    let sheet = ss.getSheetByName(REPORT_SHEET_NAME);
+    const lock = LockService.getScriptLock();
+    // Wait up to 30 seconds for other processes to finish
+    if (lock.tryLock(30000)) {
+        try {
+            const ss = getSpreadsheet();
+            let sheet = ss.getSheetByName(REPORT_SHEET_NAME);
 
-    if (!sheet) {
-        sheet = ss.insertSheet(REPORT_SHEET_NAME);
-        sheet.appendRow(['Timestamp', 'StartTime', 'EndTime', 'User', 'CustomerId', 'CustomerName', 'InputText', 'InternalReport', 'CustomerReport', 'RiskRating', 'EsRating']);
-    }
+            if (!sheet) {
+                sheet = ss.insertSheet(REPORT_SHEET_NAME);
+                sheet.appendRow(['Timestamp', 'StartTime', 'EndTime', 'User', 'CustomerId', 'CustomerName', 'InputText', 'InternalReport', 'CustomerReport', 'RiskRating', 'EsRating']);
+            }
 
-    let timestampJST;
-    if (reportData.reportDate) {
-        // Use the selected date and start time
-        const timePart = reportData.start || "00:00";
-        // Ensure date uses slashes for better compatibility if needed, though most environments handle standard formats
-        const datePart = reportData.reportDate.replace(/-/g, '/');
-        const d = new Date(`${datePart} ${timePart}`);
-        if (!isNaN(d.getTime())) {
-            timestampJST = Utilities.formatDate(d, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
-        } else {
-            timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+            let timestampJST;
+            if (reportData.reportDate) {
+                // Use the selected date and start time
+                const timePart = reportData.start || "00:00";
+                // Ensure date uses slashes for better compatibility if needed, though most environments handle standard formats
+                const datePart = reportData.reportDate.replace(/-/g, '/');
+                const d = new Date(`${datePart} ${timePart}`);
+                if (!isNaN(d.getTime())) {
+                    timestampJST = Utilities.formatDate(d, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+                } else {
+                    timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+                }
+            } else {
+                timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+            }
+
+            sheet.appendRow([
+                timestampJST,
+                reportData.start || "",
+                reportData.end || "",
+                reportData.staffName || "", // Use selected staff name only
+                reportData.customerId || "",
+                reportData.customerName || "",
+                reportData.inputText,
+                reportData.internalText,
+                reportData.customerText,
+                reportData.riskRating || "",
+                reportData.esRating || ""
+            ]);
+
+            // Handle Image Uploads with Amount
+            let imageStatus = "No Images";
+            if (reportData.images && reportData.images.length > 0) {
+                try {
+                    const count = processReceiptImages(
+                        reportData.images, 
+                        reportData.staffName, 
+                        reportData.customerId, 
+                        reportData.customerName, 
+                        timestampJST
+                    );
+                    imageStatus = `Uploaded ${count} images`;
+                } catch (e) {
+                    console.error("Image Upload Failed: " + e.message);
+                    // We return the error details so the frontend can warn the user
+                    // even if the report text was saved.
+                    return { success: true, message: "日報は保存されましたが、画像保存に失敗しました: " + e.message };
+                }
+            }
+
+            // --- LineWorks Notification ---
+            try {
+                const star = (n) => "★".repeat(Number(n) || 0) + "☆".repeat(5 - (Number(n) || 0));
+                let ratingsInfo = "";
+                if (reportData.riskRating || reportData.esRating) {
+                    ratingsInfo = "\n\n【評価指標】";
+                    if (reportData.riskRating) ratingsInfo += `\nリスク: ${star(reportData.riskRating)} (${reportData.riskRating})`;
+                    if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
+                }
+
+                // Requested format: Staff Name + Internal Report + Ratings
+                const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}${ratingsInfo}`;
+                sendToLineWorks(lwText);
+            } catch (e) {
+                console.error("LineWorks Notification Failed: " + e.message);
+            }
+            // ------------------------------
+
+            return { success: true, message: "保存しました (" + imageStatus + ")" };
+        } catch (e) {
+            return { success: false, message: "エラーが発生しました: " + e.message };
+        } finally {
+            lock.releaseLock();
         }
     } else {
-        timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+        return { success: false, message: "サーバーが混み合っているため保存できませんでした。しばらく待ってから再試行してください。" };
     }
-
-    sheet.appendRow([
-        timestampJST,
-        reportData.start || "",
-        reportData.end || "",
-        reportData.staffName || "", // Use selected staff name only
-        reportData.customerId || "",
-        reportData.customerName || "",
-        reportData.inputText,
-        reportData.internalText,
-        reportData.customerText,
-        reportData.riskRating || "",
-        reportData.esRating || ""
-    ]);
-
-    // --- Firestore Write ---
-    // --- Firestore Write ---
-    /*
-    const firestore = getFirestore();
-    if (firestore) {
-        try {
-            const docData = {
-                timestamp: timestampJST,
-                start: reportData.start || "",
-                end: reportData.end || "",
-                staffName: reportData.staffName || "",
-                customerId: reportData.customerId || "",
-                customerName: reportData.customerName || "",
-                inputText: reportData.inputText,
-                internalText: reportData.internalText,
-                customerText: reportData.customerText,
-                riskRating: reportData.riskRating || 0,
-                esRating: reportData.esRating || 0,
-                reportDate: reportData.reportDate || "",
-                type: 'daily',
-                createdAt: new Date()
-            };
-            firestore.createDocument("reports", docData);
-        } catch (e) {
-            console.error("Firestore Write Error: " + e.message);
-        }
-    }
-    */
-
-    // Handle Image Uploads with Amount
-    let imageStatus = "No Images";
-    if (reportData.images && reportData.images.length > 0) {
-        try {
-            const count = processReceiptImages(reportData.images, reportData.staffName, reportData.customerId);
-            imageStatus = `Uploaded ${count} images`;
-        } catch (e) {
-            console.error("Image Upload Failed: " + e.message);
-            // We return the error details so the frontend can warn the user
-            // even if the report text was saved.
-            return { success: true, message: "日報は保存されましたが、画像保存に失敗しました: " + e.message };
-        }
-    }
-
-    // --- LineWorks Notification ---
-    try {
-        const star = (n) => "★".repeat(Number(n) || 0) + "☆".repeat(5 - (Number(n) || 0));
-        let ratingsInfo = "";
-        if (reportData.riskRating || reportData.esRating) {
-            ratingsInfo = "\n\n【評価指標】";
-            if (reportData.riskRating) ratingsInfo += `\nリスク: ${star(reportData.riskRating)} (${reportData.riskRating})`;
-            if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
-        }
-
-        // Requested format: Staff Name + Internal Report + Ratings
-        const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}${ratingsInfo}`;
-        sendToLineWorks(lwText);
-    } catch (e) {
-        console.error("LineWorks Notification Failed: " + e.message);
-    }
-    // ------------------------------
-
-    return { success: true, message: "保存しました (" + imageStatus + ")" };
 }
 
 /**
  * Saves receipt images to Drive and logs to Spreadsheet
- * Updated to handle Amount and CustomerID
+ * Updated to handle Amount, CustomerID, CustomerName, StoreName and Timestamp from report
  */
-function processReceiptImages(imagesData, staffId, customerId) {
+function processReceiptImages(imagesData, staffId, customerId, customerName, reportTimestamp) {
     if (!imagesData || imagesData.length === 0) return 0;
 
     const folder = DriveApp.getFolderById(RECEIPT_FOLDER_ID);
     const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
     const sheet = ss.getSheets()[0];
     // Ensure header matches new requirements
-    // Old: ['日時', 'ユーザーID', 'Googleドライブ写真ファイルへのリンク']
-    // New: ['日時', 'ユーザーID', '顧客ID', '金額', 'Googleドライブ写真ファイルへのリンク']
-    // We won't delete old data, just append new columns effectively from now on if row 1 is empty
+    // New: ['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '店名', 'Googleドライブ写真ファイルへのリンク']
     if (sheet.getLastRow() === 0) {
-        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '金額', 'Googleドライブ写真ファイルへのリンク']);
+        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '店名', 'Googleドライブ写真ファイルへのリンク']);
     }
 
+    // Use the timestamp from the report instead of current time
+    const timestamp = reportTimestamp || Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
     const now = new Date();
-    const timestamp = Utilities.formatDate(now, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
     const filePrefix = Utilities.formatDate(now, "Asia/Tokyo", "yyyyMMdd_HHmmss");
 
     let successCount = 0;
@@ -754,8 +746,11 @@ function processReceiptImages(imagesData, staffId, customerId) {
         const file = folder.createFile(blob);
         const fileUrl = file.getUrl();
 
-        // Append to Spreadsheet
-        sheet.appendRow([timestamp, staffId || '', customerId || '', amount || '', fileUrl]);
+        // Extract storeName from item if available
+        const storeName = (typeof item === 'object' && item.storeName) ? item.storeName : '';
+
+        // Append to Spreadsheet with new columns
+        sheet.appendRow([timestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl]);
         successCount++;
     });
     return successCount;
@@ -822,77 +817,48 @@ const PROMPT_ACCIDENT_KEY = 'GenerateAccident';
  * Saves the accident report to 'AccidentReports' sheet.
  */
 function saveAccidentReport(reportData) {
-    const ss = getSpreadsheet();
-    let sheet = ss.getSheetByName(ACCIDENT_SHEET_NAME);
-
-    if (!sheet) {
-        sheet = ss.insertSheet(ACCIDENT_SHEET_NAME);
-        sheet.appendRow([
-            'Timestamp', 'Reporter', 'CustomerId', 'CustomerName',
-            'OccurrenceTime', 'Location', 'AccidentContent',
-            'Situation', 'ImmediateResponse', 'ParentCorrespondence',
-            'DiagnosisTreatment', 'Prevention', 'OriginalInput', 'ReportType'
-        ]);
-    }
-
-    const timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
-
-    sheet.appendRow([
-        timestampJST,
-        reportData.staffName || "",
-        reportData.customerId || "",
-        reportData.customerName || "",
-        reportData.targetName || "",
-        reportData.targetDob || "",
-        reportData.occurrenceTime,
-        reportData.location,
-        reportData.accidentContent,
-        reportData.situation,
-        reportData.immediateResponse,
-        reportData.parentCorrespondence,
-        reportData.diagnosisTreatment,
-        reportData.prevention,
-        reportData.inputText,
-        reportData.reportType || "事故報告" // Default to Accident if missing
-    ]);
-
-    // --- Firestore Write (Accident) ---
-    // --- Firestore Write (Accident) ---
-    /*
-    const firestore = getFirestore();
-    if (firestore) {
+    const lock = LockService.getScriptLock();
+    // Wait up to 30 seconds for other processes to finish
+    if (lock.tryLock(30000)) {
         try {
-            const docData = {
-                timestamp: timestampJST,
-                staffName: reportData.staffName || "",
-                customerId: reportData.customerId || "",
-                customerName: reportData.customerName || "",
-                targetName: reportData.targetName || "",
-                targetDob: reportData.targetDob || "",
-                occurrenceTime: reportData.occurrenceTime,
-                location: reportData.location,
-                accidentContent: reportData.accidentContent,
-                situation: reportData.situation,
-                immediateResponse: reportData.immediateResponse,
-                parentCorrespondence: reportData.parentCorrespondence,
-                diagnosisTreatment: reportData.diagnosisTreatment,
-                prevention: reportData.prevention,
-                inputText: reportData.inputText,
-                reportType: reportData.reportType || "事故報告",
-                type: 'accident',
-                createdAt: new Date()
-            };
-            firestore.createDocument("reports", docData);
-        } catch (e) {
-            console.error("Firestore Write Error (Accident): " + e.message);
-        }
-    }
-    */
+            const ss = getSpreadsheet();
+            let sheet = ss.getSheetByName(ACCIDENT_SHEET_NAME);
 
-    // --- LineWorks Notification ---
-    try {
-        const typeLabel = reportData.reportType || "事故報告";
-        const lwText = `【${typeLabel}】
+            if (!sheet) {
+                sheet = ss.insertSheet(ACCIDENT_SHEET_NAME);
+                sheet.appendRow([
+                    'Timestamp', 'Reporter', 'CustomerId', 'CustomerName',
+                    'OccurrenceTime', 'Location', 'AccidentContent',
+                    'Situation', 'ImmediateResponse', 'ParentCorrespondence',
+                    'DiagnosisTreatment', 'Prevention', 'OriginalInput', 'ReportType'
+                ]);
+            }
+
+            const timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+
+            sheet.appendRow([
+                timestampJST,
+                reportData.staffName || "",
+                reportData.customerId || "",
+                reportData.customerName || "",
+                reportData.targetName || "",
+                reportData.targetDob || "",
+                reportData.occurrenceTime,
+                reportData.location,
+                reportData.accidentContent,
+                reportData.situation,
+                reportData.immediateResponse,
+                reportData.parentCorrespondence,
+                reportData.diagnosisTreatment,
+                reportData.prevention,
+                reportData.inputText,
+                reportData.reportType || "事故報告" // Default to Accident if missing
+            ]);
+
+            // --- LineWorks Notification ---
+            try {
+                const typeLabel = reportData.reportType || "事故報告";
+                const lwText = `【${typeLabel}】
 担当: ${reportData.staffName}
 対象: ${reportData.targetName}
 生年月日: ${reportData.targetDob}
@@ -904,13 +870,21 @@ function saveAccidentReport(reportData) {
 保護者への対応: ${reportData.parentCorrespondence}
 診断名および処置状況: ${reportData.diagnosisTreatment}
 今後の対応: ${reportData.prevention}`;
-        sendToLineWorks(lwText);
-    } catch (e) {
-        console.error("LineWorks Accident Notification Failed: " + e.message);
-    }
-    // ------------------------------
+                sendToLineWorks(lwText);
+            } catch (e) {
+                console.error("LineWorks Accident Notification Failed: " + e.message);
+            }
+            // ------------------------------
 
-    return "Success";
+            return "Success";
+        } catch (e) {
+            return "Error: " + e.message;
+        } finally {
+            lock.releaseLock();
+        }
+    } else {
+        return "Server Busy";
+    }
 }
 
 
@@ -1269,90 +1243,102 @@ function getStaffList() {
  * Supports full CSV column import.
  */
 function updateDatabaseFromLinesV2(rawString) {
-    if (!rawString) return "Empty Data";
+    const lock = LockService.getScriptLock();
+    // Wait up to 30 seconds for other processes to finish
+    if (lock.tryLock(30000)) {
+        try {
+            if (!rawString) return "Empty Data";
 
-    // Detect Delimiter: Try Tab then Comma
-    const firstLine = rawString.substring(0, rawString.indexOf('\n'));
-    let delimiter = ',';
-    // If tab count > visible comma count, assume tab
-    if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
-        delimiter = '\t';
-    }
-
-    const csvData = Utilities.parseCsv(rawString, delimiter);
-    if (!csvData || csvData.length < 2) return "Invalid CSV Data";
-
-    const ss = getSpreadsheet();
-    let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
-    let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
-
-    // Ensure sheets exist
-    if (!cSheet) cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
-    if (!fSheet) fSheet = ss.insertSheet(FAMILY_DB_NAME);
-
-    // Full Replace for Customer DB based on Requirement "CSV has all data"
-    // We will clear the sheet and rewrite it to match the CSV structure exactly.
-    cSheet.clearContents();
-
-    const headerRow = csvData[0];
-    const dataRows = csvData.slice(1);
-
-    // Write Headers
-    if (headerRow) cSheet.appendRow(headerRow);
-
-    // Write All Data
-    if (dataRows.length > 0) {
-        cSheet.getRange(2, 1, dataRows.length, headerRow.length).setValues(dataRows);
-    }
-
-    // Family DB Handling (Extract from CSV)
-    // We still need to parse Family info to populate FAMILY_DB_NAME
-    // Family DB Handling (Extract from CSV)
-    // We still need to parse Family info to populate FAMILY_DB_NAME
-    const idxFamily = headerRow.findIndex(h => h.includes('世帯') || h.includes('家族') || h.includes('Family'));
-    const idxId = headerRow.findIndex(h => h.includes('顧客ID'));
-
-    const fHeader = ['顧客ID', '家族氏名', '生年月日', '職業', 'アレルギー情報', '備考'];
-    // Reset Family DB as well
-    fSheet.clearContents();
-    fSheet.appendRow(fHeader);
-
-    const fRows = [];
-
-    if (idxId !== -1 && idxFamily !== -1) {
-        for (const row of dataRows) {
-            const id = String(row[idxId]);
-            if (!id) continue;
-
-            const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
-            if (familyRaw) {
-                const parsedFamilies = parseFamilyInfo(familyRaw);
-                parsedFamilies.forEach(f => {
-                    // f: { name, dob, info }
-                    // Try to extract Allergy from info
-                    let allergy = "";
-                    let otherInfo = f.info;
-
-                    // Simple heuristic to extract allergy
-                    // If info contains "アレルギー", try to extract closest segment
-                    // But for now, just putting everything in info is safer, or column alignment
-                    // The user prompt had specific "アレルギー:..." or "アレルギーなし"
-
-                    // We will put everything else in "備考" for now, as splitting Job/Allergy is ambiguous without named fields
-                    fRows.push([id, f.name, f.dob, "", "", otherInfo]);
-                });
+            // Detect Delimiter: Try Tab then Comma
+            const firstLine = rawString.substring(0, rawString.indexOf('\n'));
+            let delimiter = ',';
+            // If tab count > visible comma count, assume tab
+            if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
+                delimiter = '\t';
             }
+
+            const csvData = Utilities.parseCsv(rawString, delimiter);
+            if (!csvData || csvData.length < 2) return "Invalid CSV Data";
+
+            const ss = getSpreadsheet();
+            let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
+            let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
+
+            // Ensure sheets exist
+            if (!cSheet) cSheet = ss.insertSheet(CUSTOMER_DB_NAME);
+            if (!fSheet) fSheet = ss.insertSheet(FAMILY_DB_NAME);
+
+            // Full Replace for Customer DB based on Requirement "CSV has all data"
+            // We will clear the sheet and rewrite it to match the CSV structure exactly.
+            cSheet.clearContents();
+
+            const headerRow = csvData[0];
+            const dataRows = csvData.slice(1);
+
+            // Write Headers
+            if (headerRow) cSheet.appendRow(headerRow);
+
+            // Write All Data
+            if (dataRows.length > 0) {
+                cSheet.getRange(2, 1, dataRows.length, headerRow.length).setValues(dataRows);
+            }
+
+            // Family DB Handling (Extract from CSV)
+            // We still need to parse Family info to populate FAMILY_DB_NAME
+            // Family DB Handling (Extract from CSV)
+            // We still need to parse Family info to populate FAMILY_DB_NAME
+            const idxFamily = headerRow.findIndex(h => h.includes('世帯') || h.includes('家族') || h.includes('Family'));
+            const idxId = headerRow.findIndex(h => h.includes('顧客ID'));
+
+            const fHeader = ['顧客ID', '家族氏名', '生年月日', '職業', 'アレルギー情報', '備考'];
+            // Reset Family DB as well
+            fSheet.clearContents();
+            fSheet.appendRow(fHeader);
+
+            const fRows = [];
+
+            if (idxId !== -1 && idxFamily !== -1) {
+                for (const row of dataRows) {
+                    const id = String(row[idxId]);
+                    if (!id) continue;
+
+                    const familyRaw = (idxFamily < row.length) ? row[idxFamily] : "";
+                    if (familyRaw) {
+                        const parsedFamilies = parseFamilyInfo(familyRaw);
+                        parsedFamilies.forEach(f => {
+                            // f: { name, dob, info }
+                            // Try to extract Allergy from info
+                            // let allergy = "";
+                            let otherInfo = f.info;
+
+                            // Simple heuristic to extract allergy
+                            // If info contains "アレルギー", try to extract closest segment
+                            // But for now, just putting everything in info is safer, or column alignment
+                            // The user prompt had specific "アレルギー:..." or "アレルギーなし"
+
+                            // We will put everything else in "備考" for now, as splitting Job/Allergy is ambiguous without named fields
+                            fRows.push([id, f.name, f.dob, "", "", otherInfo]);
+                        });
+                    }
+                }
+            }
+
+            if (fRows.length > 0) {
+                fSheet.getRange(2, 1, fRows.length, fHeader.length).setValues(fRows);
+            }
+
+            // Update Data Version
+            PropertiesService.getScriptProperties().setProperty('DATA_VERSION', String(Date.now()));
+
+            return "Upload Successful";
+        } catch (e) {
+            return "Error: " + e.message;
+        } finally {
+            lock.releaseLock();
         }
+    } else {
+        return "Server Busy";
     }
-
-    if (fRows.length > 0) {
-        fSheet.getRange(2, 1, fRows.length, fHeader.length).setValues(fRows);
-    }
-
-    // Update Data Version
-    PropertiesService.getScriptProperties().setProperty('DATA_VERSION', String(Date.now()));
-
-    return "Upload Successful";
 }
 
 /**
@@ -1633,7 +1619,7 @@ function normalizeDateStr(dateStr) {
 // --- Assessment Definitions ---
 const ASSESSMENT_DEFINITIONS = {
     risk: {
-        title: "産後うつ・児童虐待総合評価",
+        title: "PSI",
         levels: [
             { score: 5, label: "安心・良好", desc: "全く懸念がない状態。\n保護者の表情も明るく、お子様も衛生・情緒ともに安定している。\n部屋も安全に保たれている。" },
             { score: 4, label: "通常", desc: "一般的な家庭の状態。\n多少の疲れや散らかりはあるが、保育に支障はなく、親子の関わりも標準的。" },

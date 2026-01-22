@@ -2027,9 +2027,9 @@
                     // Compress to JPEG 0.7
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
-                    // Add to list with empty amount and loading state
+                    // Add to list with empty amount, storeName and loading state
                     const newIdx = currentImages.length;
-                    currentImages.push({ data: dataUrl, amount: '', loading: true });
+                    currentImages.push({ data: dataUrl, amount: '', storeName: '', loading: true });
                     renderImagePreviews();
 
                     // Trigger OCR
@@ -2046,6 +2046,9 @@
                         currentImages[index].loading = false;
                         if (res.amount) {
                             currentImages[index].amount = res.amount;
+                        }
+                        if (res.storeName) {
+                            currentImages[index].storeName = res.storeName;
                         }
                         renderImagePreviews();
                     }
@@ -2064,7 +2067,7 @@
 
                 currentImages.forEach((imgObj, idx) => {
                     const div = document.createElement('div');
-                    div.className = 'relative w-28 flex flex-col gap-1 items-center'; // increased width
+                    div.className = 'relative w-32 flex flex-col gap-1 items-center'; // increased width for store name
 
                     // Image Container
                     const imgDiv = document.createElement('div');
@@ -2078,11 +2081,10 @@
                     ${imgObj.loading ? '<div class="absolute inset-0 bg-black/30 flex items-center justify-center"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div></div>' : ''}
                 `;
 
-                    // Wrapper for input with "円" label
-                    const inputContainer = document.createElement('div');
-                    inputContainer.className = "w-full px-1";
-                    // Using oninput to update model
-                    inputContainer.innerHTML = `
+                    // Wrapper for amount input
+                    const amountContainer = document.createElement('div');
+                    amountContainer.className = "w-full px-1";
+                    amountContainer.innerHTML = `
                     <input type="number" 
                         value="${imgObj.amount}" 
                         placeholder="金額" 
@@ -2092,8 +2094,21 @@
                     >
                 `;
 
+                    // Wrapper for store name input
+                    const storeContainer = document.createElement('div');
+                    storeContainer.className = "w-full px-1";
+                    storeContainer.innerHTML = `
+                    <input type="text" 
+                        value="${imgObj.storeName || ''}" 
+                        placeholder="店名" 
+                        oninput="currentImages[${idx}].storeName = this.value"
+                        class="w-full p-1 text-sm border border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500"
+                    >
+                `;
+
                     div.appendChild(imgDiv);
-                    div.appendChild(inputContainer);
+                    div.appendChild(amountContainer);
+                    div.appendChild(storeContainer);
                     container.appendChild(div);
                 });
 
