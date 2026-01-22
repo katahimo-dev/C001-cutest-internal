@@ -719,9 +719,9 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
     const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
     const sheet = ss.getSheets()[0];
     // Ensure header matches new requirements
-    // New: ['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '店名', 'Googleドライブ写真ファイルへのリンク']
+    // New: ['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク']
     if (sheet.getLastRow() === 0) {
-        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '店名', 'Googleドライブ写真ファイルへのリンク']);
+        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク']);
     }
 
     // Use the timestamp from the report instead of current time

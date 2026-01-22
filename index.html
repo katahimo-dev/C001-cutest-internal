@@ -1745,6 +1745,11 @@
                 btn.disabled = false;
                 btn.innerHTML = '<span>日報を作成する</span>';
 
+                // Reset save button to initial state
+                const saveBtn = document.getElementById('saveBtn');
+                saveBtn.disabled = false;
+                saveBtn.textContent = '保存する';
+
                 const warningsArea = document.getElementById('warningsArea');
                 if (result.warnings && result.warnings.length > 0) {
                     document.getElementById('warningsList').textContent = result.warnings.join(', ');
@@ -1775,6 +1780,11 @@
                 const btn = document.getElementById('generateBtn');
                 btn.disabled = false;
                 btn.innerHTML = '<span>事故報告書を作成する</span>';
+
+                // Reset save button to initial state
+                const saveBtn = document.getElementById('saveBtn');
+                saveBtn.disabled = false;
+                saveBtn.textContent = '保存する';
 
                 if (result.error) {
                     showToast(result.error, true);
@@ -2118,7 +2128,7 @@
                     storeContainer.innerHTML = `
                     <input type="text" 
                         value="${imgObj.storeName || ''}" 
-                        placeholder="店名" 
+                        placeholder="名称" 
                         oninput="currentImages[${idx}].storeName = this.value"
                         class="w-full p-1 text-sm border border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500"
                     >
