@@ -250,19 +250,27 @@ function getData() {
     // --- Anonymization Helpers ---
     const isPoc = getPocConfig();
 
-    // Shift Kanji codes to create fake names
-    const anonymizeName = (str) => {
+    // 名前マッピング用のカウンター（関数内で管理）
+    let nameCounter = 0;
+    let childNameCounter = 0;
+    const nameMap = {}; // 元の名前 -> 匿名化された名前のマップ（一貫性のため）
+
+    // 歴史上の有名人名を使って匿名化
+    const anonymizeName = (str, isChild = false) => {
         if (!isPoc || !str) return str || "";
-        return str.split('').map(c => {
-            const code = c.charCodeAt(0);
-            if (code >= 0x4E00 && code <= 0x9FFF) {
-                return String.fromCharCode(code + Math.floor(Math.random() * 50) + 1);
-            }
-            if (code >= 0x3040 && code <= 0x30FF) {
-                return String.fromCharCode(code + Math.floor(Math.random() * 10) + 1);
-            }
-            return c;
-        }).join('');
+        
+        // すでにマッピング済みの場合は同じ名前を返す（一貫性のため）
+        const key = (isChild ? "child_" : "adult_") + str;
+        if (nameMap[key]) {
+            return nameMap[key];
+        }
+        
+        // 新しい匿名化名を取得
+        const counter = isChild ? childNameCounter++ : nameCounter++;
+        const anonymized = getAnonymizedName(str, counter, isChild);
+        nameMap[key] = anonymized;
+        
+        return anonymized;
     };
 
     const anonymizeAddr = (str) => {
@@ -320,7 +328,7 @@ function getData() {
         if (!cId) return;
         if (!familyMap[cId]) familyMap[cId] = [];
         familyMap[cId].push({
-            name: anonymizeName(toStr(row[1])),
+            name: anonymizeName(toStr(row[1]), true), // 子供の名前として匿名化
             dob: fmtDate(row[2]),
             job: toStr(row[3]),
             allergy: toStr(row[4]),
@@ -677,7 +685,7 @@ function saveReport(reportData) {
                 let ratingsInfo = "";
                 if (reportData.riskRating || reportData.esRating) {
                     ratingsInfo = "\n\n【評価指標】";
-                    if (reportData.riskRating) ratingsInfo += `\nリスク: ${star(reportData.riskRating)} (${reportData.riskRating})`;
+                    if (reportData.riskRating) ratingsInfo += `\PSI: ${star(reportData.riskRating)} (${reportData.riskRating})`;
                     if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
                 }
 
@@ -890,6 +898,62 @@ function saveAccidentReport(reportData) {
 
 
 
+/**
+ * Checks if a staff member is still active (not retired)
+ * Used for auto-login validation
+ */
+function checkStaffActiveStatus(staffName) {
+    try {
+        const ss = SpreadsheetApp.openById(STAFF_SS_ID);
+        let sheet = null;
+        const sheets = ss.getSheets();
+        for (let i = 0; i < sheets.length; i++) {
+            if (sheets[i].getSheetId() === STAFF_GID) {
+                sheet = sheets[i];
+                break;
+            }
+        }
+
+        if (!sheet) return { active: false, message: "Staff sheet not found" };
+
+        const data = sheet.getDataRange().getValues().slice(1); // Skip header
+
+        // Find user by name (Col 1)
+        const user = data.find(row => String(row[1]) === staffName);
+
+        if (!user) {
+            return { active: false, message: "ユーザーが見つかりません" };
+        }
+
+        // Check retirement date (Col 7 = H column)
+        const retirementDate = user[7];
+        if (retirementDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            let retireDate;
+            if (retirementDate instanceof Date) {
+                retireDate = new Date(retirementDate);
+                retireDate.setHours(0, 0, 0, 0);
+            } else {
+                retireDate = new Date(retirementDate);
+                if (!isNaN(retireDate.getTime())) {
+                    retireDate.setHours(0, 0, 0, 0);
+                } else {
+                    retireDate = null;
+                }
+            }
+            
+            if (retireDate && retireDate <= today) {
+                return { active: false, message: "退職済みのため、ログインできません" };
+            }
+        }
+        
+        return { active: true };
+    } catch (e) {
+        return { active: false, message: e.message };
+    }
+}
 
 function verifyLogin(userId, password) {
     try {
@@ -907,15 +971,42 @@ function verifyLogin(userId, password) {
 
         const data = sheet.getDataRange().getValues().slice(1); // Skip header
 
-        // New Layout:
-        // Col 1: Name
-        // Col 9: UserID
-        // Col 10: Password
-        // Col 11: Admin (1 = true)
-        const user = data.find(row => String(row[9]) === userId && String(row[10]) === password);
+        // Layout:
+        // Col B (idx 1): Name
+        // Col H (idx 7): Retirement Date (退職日)
+        // Col I (idx 8): UserID
+        // Col J (idx 9): Password
+        // Col K (idx 10): Admin (1 = true)
+        const user = data.find(row => String(row[8]) === userId && String(row[9]) === password);
 
         if (user) {
-            const isAdmin = (user[11] == 1 || user[11] === '1');
+            // Check retirement date (Col H = index 7)
+            const retirementDate = user[7];
+            if (retirementDate && retirementDate !== "") {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0); // Reset to start of day for comparison
+                
+                let retireDate;
+                if (retirementDate instanceof Date) {
+                    retireDate = new Date(retirementDate);
+                    retireDate.setHours(0, 0, 0, 0);
+                } else {
+                    // Try to parse as date string
+                    retireDate = new Date(retirementDate);
+                    if (!isNaN(retireDate.getTime())) {
+                        retireDate.setHours(0, 0, 0, 0);
+                    } else {
+                        retireDate = null;
+                    }
+                }
+                
+                // If retirement date is today or in the past, deny access
+                if (retireDate && retireDate <= today) {
+                    return { success: false, message: "ログイン権限のないユーザーです" };
+                }
+            }
+            
+            const isAdmin = (user[10] == 1 || user[10] === '1');
             return { success: true, name: user[1], isAdmin: isAdmin };
         } else {
             return { success: false, message: "Invalid ID or password" };

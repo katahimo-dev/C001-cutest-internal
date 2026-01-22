@@ -305,7 +305,7 @@
                         <!-- Risk -->
                         <div>
                             <div class="flex items-center gap-1 mb-1">
-                                <label class="text-xs font-bold text-gray-600">産後うつ・虐待リスク評価</label>
+                                <label class="text-xs font-bold text-gray-600">PSI</label>
                                 <button onclick="showAssessmentHint('risk')" class="text-gray-400 hover:text-blue-500">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -708,14 +708,32 @@
             function checkLogin() {
                 const savedName = localStorage.getItem(STAFF_CACHE_KEY);
                 if (savedName) {
-                    currentStaffName = savedName;
-                    document.getElementById('headerUserName').textContent = savedName + ' さん';
-                    document.getElementById('loginModal').classList.add('hidden');
+                    // Validate staff is still active (not retired)
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.active) {
+                            currentStaffName = savedName;
+                            document.getElementById('headerUserName').textContent = savedName + ' さん';
+                            document.getElementById('loginModal').classList.add('hidden');
 
-                    // Admin check
+                            // Admin check
 
-
-                    loadData(false);
+                            loadData(false);
+                        } else {
+                            // Staff is retired or invalid, clear cache and show login
+                            localStorage.removeItem(STAFF_CACHE_KEY);
+                            localStorage.removeItem(STAFF_ADMIN_KEY);
+                            const err = document.getElementById('loginError');
+                            if (err) err.textContent = res.message || '再ログインしてください';
+                            document.getElementById('loginModal').classList.remove('hidden');
+                        }
+                    }).withFailureHandler(e => {
+                        console.error("Staff status check failed:", e);
+                        // On error, allow login but log the issue
+                        currentStaffName = savedName;
+                        document.getElementById('headerUserName').textContent = savedName + ' さん';
+                        document.getElementById('loginModal').classList.add('hidden');
+                        loadData(false);
+                    }).checkStaffActiveStatus(savedName);
                 } else {
                     document.getElementById('loginModal').classList.remove('hidden');
                 }
@@ -1481,7 +1499,7 @@
                                     <span class="text-sm font-bold text-gray-700">${dateStr}</span>
                                     <span class="text-xs text-gray-500 ml-1 mr-2">${timeStr}</span>
                                     
-                                    ${(r.risk) ? `<span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 whitespace-nowrap mr-1">リスク:${"★".repeat(Number(r.risk) || 0) + "☆".repeat(5 - (Number(r.risk) || 0))}</span>` : ''}
+                                    ${(r.risk) ? `<span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 whitespace-nowrap mr-1">PSI:${"★".repeat(Number(r.risk) || 0) + "☆".repeat(5 - (Number(r.risk) || 0))}</span>` : ''}
                                     ${(r.es) ? `<span class="text-xs font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 whitespace-nowrap">ES:${"★".repeat(Number(r.es) || 0) + "☆".repeat(5 - (Number(r.es) || 0))}</span>` : ''}
                                 </div>
                                 <div class="text-xs text-gray-400 flex items-center gap-1 flex-shrink-0">
