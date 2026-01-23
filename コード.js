@@ -258,18 +258,18 @@ function getData() {
     // 歴史上の有名人名を使って匿名化
     const anonymizeName = (str, isChild = false) => {
         if (!isPoc || !str) return str || "";
-        
+
         // すでにマッピング済みの場合は同じ名前を返す（一貫性のため）
         const key = (isChild ? "child_" : "adult_") + str;
         if (nameMap[key]) {
             return nameMap[key];
         }
-        
+
         // 新しい匿名化名を取得
         const counter = isChild ? childNameCounter++ : nameCounter++;
         const anonymized = getAnonymizedName(str, counter, isChild);
         nameMap[key] = anonymized;
-        
+
         return anonymized;
     };
 
@@ -645,7 +645,8 @@ function saveReport(reportData) {
                 timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
             }
 
-            sheet.appendRow([
+            let savedRowIndex;
+            const rowValues = [
                 timestampJST,
                 reportData.start || "",
                 reportData.end || "",
@@ -657,17 +658,33 @@ function saveReport(reportData) {
                 reportData.customerText,
                 reportData.riskRating || "",
                 reportData.esRating || ""
-            ]);
+            ];
+
+            if (reportData.rowIndex && Number(reportData.rowIndex) > 0) {
+                savedRowIndex = Number(reportData.rowIndex);
+                // Simple validation: ensure within range
+                const lastRow = sheet.getLastRow();
+                if (savedRowIndex <= lastRow) {
+                    sheet.getRange(savedRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+                } else {
+                    // Fallback to append if index invalid
+                    sheet.appendRow(rowValues);
+                    savedRowIndex = sheet.getLastRow();
+                }
+            } else {
+                sheet.appendRow(rowValues);
+                savedRowIndex = sheet.getLastRow();
+            }
 
             // Handle Image Uploads with Amount
             let imageStatus = "No Images";
             if (reportData.images && reportData.images.length > 0) {
                 try {
                     const count = processReceiptImages(
-                        reportData.images, 
-                        reportData.staffName, 
-                        reportData.customerId, 
-                        reportData.customerName, 
+                        reportData.images,
+                        reportData.staffName,
+                        reportData.customerId,
+                        reportData.customerName,
                         timestampJST
                     );
                     imageStatus = `Uploaded ${count} images`;
@@ -685,7 +702,7 @@ function saveReport(reportData) {
                 let ratingsInfo = "";
                 if (reportData.riskRating || reportData.esRating) {
                     ratingsInfo = "\n\n【評価指標】";
-                    if (reportData.riskRating) ratingsInfo += `\PSI: ${star(reportData.riskRating)} (${reportData.riskRating})`;
+                    if (reportData.riskRating) ratingsInfo += `\nPSI: ${star(reportData.riskRating)} (${reportData.riskRating})`;
                     if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
                 }
 
@@ -697,7 +714,7 @@ function saveReport(reportData) {
             }
             // ------------------------------
 
-            return { success: true, message: "保存しました (" + imageStatus + ")" };
+            return { success: true, message: "保存しました (" + imageStatus + ")", rowIndex: savedRowIndex };
         } catch (e) {
             return { success: false, message: "エラーが発生しました: " + e.message };
         } finally {
@@ -844,7 +861,8 @@ function saveAccidentReport(reportData) {
 
             const timestampJST = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
 
-            sheet.appendRow([
+            let savedRowIndex;
+            const rowValues = [
                 timestampJST,
                 reportData.staffName || "",
                 reportData.customerId || "",
@@ -860,8 +878,22 @@ function saveAccidentReport(reportData) {
                 reportData.diagnosisTreatment,
                 reportData.prevention,
                 reportData.inputText,
-                reportData.reportType || "事故報告" // Default to Accident if missing
-            ]);
+                reportData.reportType || "事故報告"
+            ];
+
+            if (reportData.rowIndex && Number(reportData.rowIndex) > 0) {
+                savedRowIndex = Number(reportData.rowIndex);
+                const lastRow = sheet.getLastRow();
+                if (savedRowIndex <= lastRow) {
+                    sheet.getRange(savedRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+                } else {
+                    sheet.appendRow(rowValues);
+                    savedRowIndex = sheet.getLastRow();
+                }
+            } else {
+                sheet.appendRow(rowValues);
+                savedRowIndex = sheet.getLastRow();
+            }
 
             // --- LineWorks Notification ---
             try {
@@ -884,7 +916,7 @@ function saveAccidentReport(reportData) {
             }
             // ------------------------------
 
-            return "Success";
+            return { success: true, rowIndex: savedRowIndex };
         } catch (e) {
             return "Error: " + e.message;
         } finally {
@@ -930,7 +962,7 @@ function checkStaffActiveStatus(staffName) {
         if (retirementDate) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+
             let retireDate;
             if (retirementDate instanceof Date) {
                 retireDate = new Date(retirementDate);
@@ -943,12 +975,12 @@ function checkStaffActiveStatus(staffName) {
                     retireDate = null;
                 }
             }
-            
+
             if (retireDate && retireDate <= today) {
                 return { active: false, message: "退職済みのため、ログインできません" };
             }
         }
-        
+
         return { active: true };
     } catch (e) {
         return { active: false, message: e.message };
@@ -985,7 +1017,7 @@ function verifyLogin(userId, password) {
             if (retirementDate && retirementDate !== "") {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0); // Reset to start of day for comparison
-                
+
                 let retireDate;
                 if (retirementDate instanceof Date) {
                     retireDate = new Date(retirementDate);
@@ -999,13 +1031,13 @@ function verifyLogin(userId, password) {
                         retireDate = null;
                     }
                 }
-                
+
                 // If retirement date is today or in the past, deny access
                 if (retireDate && retireDate <= today) {
                     return { success: false, message: "ログイン権限のないユーザーです" };
                 }
             }
-            
+
             const isAdmin = (user[10] == 1 || user[10] === '1');
             return { success: true, name: user[1], isAdmin: isAdmin };
         } else {

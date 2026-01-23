@@ -652,6 +652,95 @@
 
         <script>
             let allCustomers = [];
+            let generateReportTimeout = null;
+            let saveReportTimeout = null;
+            let loadingUIInterval = null;
+            let savedReportsState = {
+                daily: { rowIndex: null, isDirty: true },
+                accident: { rowIndex: null, isDirty: true }
+            };
+
+            function markDirty() {
+                if (savedReportsState[currentReportMode]) {
+                    if (!savedReportsState[currentReportMode].isDirty) {
+                        savedReportsState[currentReportMode].isDirty = true;
+                        updateSaveButtonUI();
+                    }
+                }
+            }
+
+            function updateSaveButtonUI() {
+                const btn = document.getElementById('saveBtn');
+                if (!btn) return;
+
+                const state = savedReportsState[currentReportMode];
+                // Reset basic classes
+                btn.className = "w-full py-3 font-bold rounded-xl shadow-lg transform transition-transform active:scale-95 text-white";
+
+                if (state && state.rowIndex && !state.isDirty) {
+                    // Saved State
+                    btn.textContent = "保存済み";
+                    btn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                    // Optional: btn.disabled = true; // User asked for it to be clickable only if changed? 
+                    // "保存ボタンを押したときは、内容を上書きしますか...OKの場合...上書き"
+                    // If it says "Saved", clicking it again without changes is redundant but maybe they want to force overwrite?
+                    // User said: "If text box input changes, revert button to Save... make it clickable".
+                    // This implies "Saved" state might be unclickable or just passive. 
+                    // Let's make it clickable but maybe just toast "No changes"? 
+                    // Or keep it simple: If "Saved", it just looks different. If clicked, it asks overwrite.
+                    // But effectively, if !isDirty, we shouldn't really need to save.
+                    // Let's allow clicking to re-save (overwrite) even if not dirty, just in case.
+                    // But typically visual cue is enough. 
+                } else {
+                    // Dirty or New State
+                    btn.textContent = "保存する";
+                    btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                }
+            }
+
+
+            function startLoadingUI(btnId, baseLabel) {
+                const btn = document.getElementById(btnId);
+                const startTime = Date.now();
+                const duration = 90; // 90s reference for bar
+
+                if (loadingUIInterval) clearInterval(loadingUIInterval);
+
+                const update = () => {
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    const pct = Math.min((elapsed / duration) * 100, 100);
+
+                    // Gradient overlay
+                    btn.style.backgroundImage = `linear-gradient(90deg, rgba(0,0,0,0.15) ${pct}%, transparent ${pct}%)`;
+                    btn.innerHTML = `<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner inline-block align-middle mr-2"></div><span class="align-middle">${baseLabel}... (${elapsed}秒)</span>`;
+                };
+
+                update(); // immediate
+                loadingUIInterval = setInterval(update, 1000);
+            }
+
+            function resetLoadingUI(btnId) {
+                stopLoadingUI(btnId);
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.disabled = false;
+                    if (btnId === 'generateBtn') {
+                        // Restore Generate Button based on mode
+                        // Since text depends on currentReportMode, checking it here might be racy if mode is switching
+                        // But usually correct.
+                        const isDaily = currentReportMode === 'daily';
+                        btn.innerHTML = isDaily ? '<span>日報を作成する</span>' : '<span>事故報告書を作成する</span>';
+                    }
+                    // Save Button is handled by updateSaveButtonUI usually
+                }
+            }
+
+            function stopLoadingUI(btnId) {
+                if (loadingUIInterval) clearInterval(loadingUIInterval);
+                loadingUIInterval = null;
+                const btn = document.getElementById(btnId);
+                if (btn) btn.style.backgroundImage = '';
+            }
             let currentCustomer = null;
             let currentStaffName = '';
             let currentReportMode = 'daily'; // 'daily' or 'accident'
@@ -1044,6 +1133,13 @@
                         document.getElementById('saveBtnContainer').classList.add('hidden');
                     }
                 }
+                // Reset/Update Save Button UI for this mode
+                // Also reset generate button text (it changes based on mode)
+                const genBtn = document.getElementById('generateBtn');
+                if (genBtn && !genBtn.disabled) {
+                    genBtn.innerHTML = (mode === 'daily') ? '<span>日報を作成する</span>' : '<span>事故報告書を作成する</span>';
+                }
+                updateSaveButtonUI();
             }
 
             function updateAccidentPlaceholder() {
@@ -1631,6 +1727,23 @@
                 document.getElementById('startMinute').value = "00";
                 autoSetEndTime();
 
+                // Setup Change Listeners once
+                if (!window.listenersAdded) {
+                    document.getElementById('app').addEventListener('input', (e) => {
+                        // Filter out irrelevant inputs if needed, but 'app' covers modal
+                        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                            markDirty();
+                        }
+                    });
+                    // Also for selects
+                    document.getElementById('app').addEventListener('change', (e) => {
+                        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                            markDirty();
+                        }
+                    });
+                    window.listenersAdded = true;
+                }
+
                 document.getElementById('reportInput').value = '';
 
                 // Clear all results
@@ -1651,6 +1764,17 @@
                 switchMode('daily');
                 resetRatings();
                 resetDate();
+
+                // Reset Saved State
+                savedReportsState = {
+                    daily: { rowIndex: null, isDirty: true },
+                    accident: { rowIndex: null, isDirty: true }
+                };
+
+                // Force Reset Buttons
+                resetLoadingUI('generateBtn');
+                resetLoadingUI('saveBtn');
+                updateSaveButtonUI();
 
                 modal.classList.remove('hidden');
                 setTimeout(() => {
@@ -1711,16 +1835,39 @@
                 }
 
                 const btn = document.getElementById('generateBtn');
-                const originalText = btn.innerHTML;
+                // Store expected original content based on mode
+                const originalContent = currentReportMode === 'daily'
+                    ? '<span>日報を作成する</span>'
+                    : '<span>事故報告書を作成する</span>';
+
                 btn.disabled = true;
-                btn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div> 生成中...';
+                startLoadingUI('generateBtn', '生成中');
+
+                // Clear any existing timeout
+                if (generateReportTimeout) clearTimeout(generateReportTimeout);
+
+                // Set watchdog timeout (90 seconds)
+                generateReportTimeout = setTimeout(() => {
+                    if (btn.disabled) {
+                        stopLoadingUI('generateBtn');
+                        btn.disabled = false;
+                        btn.innerHTML = originalContent;
+                        showToast('生成に時間がかかっています。しばらく待ってから再度お試しください。', true);
+                    }
+                }, 90000);
 
                 if (currentReportMode === 'daily') {
                     const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
-                    google.script.run.withSuccessHandler(onReportGenerated).withFailureHandler(e => {
+                    google.script.run.withSuccessHandler((res) => {
+                        clearTimeout(generateReportTimeout);
+                        stopLoadingUI('generateBtn');
+                        onReportGenerated(res);
+                    }).withFailureHandler(e => {
+                        clearTimeout(generateReportTimeout);
+                        stopLoadingUI('generateBtn');
                         showToast('Error: ' + e.message, true);
                         btn.disabled = false;
-                        btn.innerHTML = originalText;
+                        btn.innerHTML = originalContent;
                     }).generateReportWithWarnings({
                         text: input,
                         start: start,
@@ -1728,10 +1875,16 @@
                     });
                 } else {
                     // Accident Mode
-                    google.script.run.withSuccessHandler(onAccidentReportGenerated).withFailureHandler(e => {
+                    google.script.run.withSuccessHandler((res) => {
+                        clearTimeout(generateReportTimeout);
+                        stopLoadingUI('generateBtn');
+                        onAccidentReportGenerated(res);
+                    }).withFailureHandler(e => {
+                        clearTimeout(generateReportTimeout);
+                        stopLoadingUI('generateBtn');
                         showToast('Error: ' + e.message, true);
                         btn.disabled = false;
-                        btn.innerHTML = originalText;
+                        btn.innerHTML = originalContent;
                     }).generateAccidentReport({
                         text: input,
                         start: start,
@@ -1744,11 +1897,6 @@
                 const btn = document.getElementById('generateBtn');
                 btn.disabled = false;
                 btn.innerHTML = '<span>日報を作成する</span>';
-
-                // Reset save button to initial state
-                const saveBtn = document.getElementById('saveBtn');
-                saveBtn.disabled = false;
-                saveBtn.textContent = '保存する';
 
                 const warningsArea = document.getElementById('warningsArea');
                 if (result.warnings && result.warnings.length > 0) {
@@ -1781,11 +1929,6 @@
                 btn.disabled = false;
                 btn.innerHTML = '<span>事故報告書を作成する</span>';
 
-                // Reset save button to initial state
-                const saveBtn = document.getElementById('saveBtn');
-                saveBtn.disabled = false;
-                saveBtn.textContent = '保存する';
-
                 if (result.error) {
                     showToast(result.error, true);
                     return;
@@ -1813,6 +1956,37 @@
                 document.getElementById('customerCount').textContent = customerLen + '文字';
             }
 
+            function showOverwriteConfirmation(rowIndex) {
+                const modal = document.getElementById('confirmationModal');
+                const modalContent = modal.querySelector('div');
+                const confirmBtn = document.getElementById('confirmBtnAction');
+
+                // Set Action
+                confirmBtn.onclick = function () {
+                    closeConfirmModal();
+                    executeSave(rowIndex);
+                };
+
+                modal.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    modalContent.classList.remove('scale-95');
+                    modalContent.classList.add('scale-100');
+                });
+            }
+
+            function closeConfirmModal() {
+                const modal = document.getElementById('confirmationModal');
+                const modalContent = modal.querySelector('div');
+
+                modal.classList.add('opacity-0');
+                modalContent.classList.remove('scale-100');
+                modalContent.classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+
             function saveReport() {
                 const btn = document.getElementById('saveBtn');
                 if (btn.disabled) return; // Extra safety check
@@ -1823,8 +1997,32 @@
                         return;
                     }
 
+                    // Check for Overwrite
+                    const currentState = savedReportsState[currentReportMode];
+                    if (currentState && currentState.rowIndex) {
+                        showOverwriteConfirmation(currentState.rowIndex);
+                        return;
+                    }
+
+                    // Normal Save (Append)
+                    executeSave(null);
+                    return;
+
                     btn.disabled = true;
-                    btn.textContent = '保存中...';
+                    startLoadingUI('saveBtn', '保存中');
+
+                    // Clear any existing timeout
+                    if (saveReportTimeout) clearTimeout(saveReportTimeout);
+
+                    // Set watchdog timeout (90 seconds)
+                    saveReportTimeout = setTimeout(() => {
+                        if (btn.disabled) {
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+                            updateSaveButtonUI(); // Restore correct text/color
+                            showToast('保存に時間がかかっています。通信環境を確認して再度お試しください。', true);
+                        }
+                    }, 90000);
 
                     // Format Date
                     const y = reportTargetDate.getFullYear();
@@ -1837,21 +2035,31 @@
                         const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
 
                         google.script.run.withSuccessHandler((res) => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+
                             const msg = (res && res.message) ? res.message : '保存しました';
                             const isError = (res && !res.success);
-                            const isWarning = (res && res.message && res.message.includes('失敗'));
-                            showToast(msg, isError || isWarning);
 
                             if (res && res.success) {
-                                closeModal();
+                                // Update State
+                                if (res.rowIndex) {
+                                    savedReportsState['daily'].rowIndex = res.rowIndex;
+                                    savedReportsState['daily'].isDirty = false;
+                                }
+                                updateSaveButtonUI(); // Shows "Saved" status
+                                showToast(msg);
                             } else {
-                                btn.disabled = false;
-                                btn.textContent = '保存する';
+                                updateSaveButtonUI();
+                                showToast(msg, true);
                             }
                         }).withFailureHandler(e => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
                             showToast('Error: ' + e.message, true);
                             btn.disabled = false;
-                            btn.textContent = '保存する';
+                            updateSaveButtonUI();
                         }).saveReport({
                             customerId: currentCustomer.id,
                             customerName: currentCustomer.name,
@@ -1864,7 +2072,8 @@
                             images: currentImages,
                             riskRating: assessmentRatings.risk,
                             esRating: assessmentRatings.es,
-                            reportDate: dateStr
+                            reportDate: dateStr,
+                            rowIndex: useRowIndex // Pass row index
                         });
                     } else {
                         // Save Accident
@@ -1872,13 +2081,28 @@
                         const typeEl = document.querySelector('input[name="accType"]:checked');
                         if (typeEl) reportType = typeEl.value;
 
-                        google.script.run.withSuccessHandler(() => {
-                            showToast(reportType + 'を保存しました');
-                            closeModal();
+                        google.script.run.withSuccessHandler((res) => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+
+                            if (res && res.success) {
+                                if (res.rowIndex) {
+                                    savedReportsState['accident'].rowIndex = res.rowIndex;
+                                    savedReportsState['accident'].isDirty = false;
+                                }
+                                updateSaveButtonUI();
+                                showToast(reportType + 'を保存しました');
+                            } else {
+                                updateSaveButtonUI();
+                                showToast('保存に失敗しました: ' + (typeof res === 'string' ? res : '不明なエラー'), true);
+                            }
                         }).withFailureHandler(e => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
                             showToast('Error: ' + e.message, true);
                             btn.disabled = false;
-                            btn.textContent = '保存する';
+                            updateSaveButtonUI();
                         }).saveAccidentReport({
                             customerId: currentCustomer.id,
                             customerName: currentCustomer.name,
@@ -1895,14 +2119,153 @@
                             diagnosisTreatment: document.getElementById('accDiagnosis').value,
                             prevention: document.getElementById('accPrevention').value,
                             reportType: reportType,
-                            reportDate: dateStr
+                            reportDate: dateStr,
+                            rowIndex: useRowIndex
                         });
                     }
                 } catch (e) {
+                    // Start of catch block: make sure to clear timeout and reset button
+                    if (saveReportTimeout) clearTimeout(saveReportTimeout);
+                    stopLoadingUI('saveBtn');
                     console.error(e);
                     showToast("クライアントエラー: " + e.message, true);
                     btn.disabled = false;
-                    btn.textContent = '保存する';
+                    updateSaveButtonUI();
+                }
+            }
+
+            function executeSave(useRowIndex) {
+                const btn = document.getElementById('saveBtn');
+                if (btn.disabled) return;
+
+                try {
+                    // Re-check just in case
+                    if (!currentCustomer) {
+                        showToast("エラー: 顧客情報が見つかりません。", true);
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    startLoadingUI('saveBtn', '保存中');
+
+                    // Clear any existing timeout
+                    if (saveReportTimeout) clearTimeout(saveReportTimeout);
+
+                    // Set watchdog timeout (90 seconds)
+                    saveReportTimeout = setTimeout(() => {
+                        if (btn.disabled) {
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+                            updateSaveButtonUI(); // Restore correct text/color
+                            showToast('保存に時間がかかっています。通信環境を確認して再度お試しください。', true);
+                        }
+                    }, 90000);
+
+                    // Format Date
+                    const y = reportTargetDate.getFullYear();
+                    const m = (reportTargetDate.getMonth() + 1).toString().padStart(2, '0');
+                    const d = reportTargetDate.getDate().toString().padStart(2, '0');
+                    const dateStr = `${y}/${m}/${d}`;
+
+                    if (currentReportMode === 'daily') {
+                        const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+                        const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+
+                        google.script.run.withSuccessHandler((res) => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+
+                            const msg = (res && res.message) ? res.message : '保存しました';
+
+                            if (res && res.success) {
+                                // Update State
+                                if (res.rowIndex) {
+                                    savedReportsState['daily'].rowIndex = res.rowIndex;
+                                    savedReportsState['daily'].isDirty = false;
+                                }
+                                updateSaveButtonUI(); // Shows "Saved" status
+                                showToast(msg);
+                            } else {
+                                updateSaveButtonUI();
+                                showToast(msg, true);
+                            }
+                        }).withFailureHandler(e => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            showToast('Error: ' + e.message, true);
+                            btn.disabled = false;
+                            updateSaveButtonUI();
+                        }).saveReport({
+                            customerId: currentCustomer.id,
+                            customerName: currentCustomer.name,
+                            inputText: document.getElementById('reportInput').value,
+                            start: start,
+                            end: end,
+                            internalText: document.getElementById('internalResult').value,
+                            customerText: document.getElementById('customerResult').value,
+                            staffName: currentStaffName,
+                            images: currentImages,
+                            riskRating: assessmentRatings.risk,
+                            esRating: assessmentRatings.es,
+                            reportDate: dateStr,
+                            rowIndex: useRowIndex // Pass row index
+                        });
+                    } else {
+                        // Save Accident
+                        let reportType = "事故報告";
+                        const typeEl = document.querySelector('input[name="accType"]:checked');
+                        if (typeEl) reportType = typeEl.value;
+
+                        google.script.run.withSuccessHandler((res) => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            btn.disabled = false;
+
+                            if (res && res.success) {
+                                if (res.rowIndex) {
+                                    savedReportsState['accident'].rowIndex = res.rowIndex;
+                                    savedReportsState['accident'].isDirty = false;
+                                }
+                                updateSaveButtonUI();
+                                showToast(reportType + 'を保存しました');
+                            } else {
+                                updateSaveButtonUI();
+                                showToast('保存に失敗しました: ' + (typeof res === 'string' ? res : '不明なエラー'), true);
+                            }
+                        }).withFailureHandler(e => {
+                            clearTimeout(saveReportTimeout);
+                            stopLoadingUI('saveBtn');
+                            showToast('Error: ' + e.message, true);
+                            btn.disabled = false;
+                            updateSaveButtonUI();
+                        }).saveAccidentReport({
+                            customerId: currentCustomer.id,
+                            customerName: currentCustomer.name,
+                            staffName: currentStaffName,
+                            targetName: document.getElementById('accTargetName').value,
+                            targetDob: document.getElementById('accTargetDob').value,
+                            inputText: document.getElementById('reportInput').value,
+                            occurrenceTime: document.getElementById('accOccurrenceTime').value,
+                            location: document.getElementById('accLocation').value,
+                            accidentContent: document.getElementById('accContent').value,
+                            situation: document.getElementById('accSituation').value,
+                            immediateResponse: document.getElementById('accResponse').value,
+                            parentCorrespondence: document.getElementById('accParentCorrespondence').value,
+                            diagnosisTreatment: document.getElementById('accDiagnosis').value,
+                            prevention: document.getElementById('accPrevention').value,
+                            reportType: reportType,
+                            reportDate: dateStr,
+                            rowIndex: useRowIndex
+                        });
+                    }
+                } catch (e) {
+                    if (saveReportTimeout) clearTimeout(saveReportTimeout);
+                    stopLoadingUI('saveBtn');
+                    console.error(e);
+                    showToast("クライアントエラー: " + e.message, true);
+                    btn.disabled = false;
+                    updateSaveButtonUI();
                 }
             }
 
@@ -1918,6 +2281,7 @@
                 if (micBtn.disabled) return; // Prevent double click
 
                 const recognition = new SpeechRecognition();
+
                 recognition.lang = 'ja-JP';
                 recognition.interimResults = false;
                 recognition.maxAlternatives = 1;
@@ -2254,6 +2618,25 @@
                 <div class="p-4 border-t bg-gray-50 rounded-b-2xl text-right">
                     <button onclick="closeCustomerHistory()"
                         class="px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700">閉じる</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirmation Modal -->
+        <div id="confirmationModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+            <div
+                class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 transform scale-95 transition-transform duration-300">
+                <h3 class="font-bold text-lg text-gray-800 mb-2">上書き保存の確認</h3>
+                <p class="text-sm text-gray-600 mb-6 font-bold" style="white-space: pre-line;">
+                    以前保存した内容を上書きしますか？
+                    (OKで上書き、キャンセルで中止)
+                </p>
+                <div class="flex gap-3">
+                    <button onclick="closeConfirmModal()"
+                        class="flex-1 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">キャンセル</button>
+                    <button id="confirmBtnAction"
+                        class="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md transition-colors">OK</button>
                 </div>
             </div>
         </div>
