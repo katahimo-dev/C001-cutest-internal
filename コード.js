@@ -379,8 +379,25 @@ function getData() {
             } else {
                 val = toStr(val);
                 // Anonymize details as well
-                if (h === '姓' || h === '名' || h.includes('氏名')) {
-                    val = anonymizeName(val);
+                if (h.includes('氏名') || (h === '姓' || h === '名')) {
+                    // Check if this is a secondary name field (Separate Surname/Name or Kana)
+                    if (h.includes('カナ') || h.includes('かな') || h === '姓' || h === '名') {
+                        if (isPoc) {
+                            // For separate Surname/Name/Kana fields in PoC mode, 
+                            // we mask them to prevent inconsistency with the anonymized Full Name ("Oda Nobunaga").
+                            // Showing "Toyotomi" for Surname and "Ieyasu" for Name is confusing.
+                            // Showing real Kana is a security leak.
+                            val = "―";
+                        } else {
+                            // If not PoC, show raw data (normally) but here we might need consistent anonymization?
+                            // No, if !isPoc, we return raw data. But wait, earlier lines check `if (isPoc)`.
+                            // anonymizeName handles checking isPoc internally.
+                            val = anonymizeName(val);
+                        }
+                    } else {
+                        // Main Full Name field
+                        val = anonymizeName(val);
+                    }
                 } else if (h.includes('住所') || h.includes('駐車場')) {
                     val = anonymizeAddr(val);
                 } else if (isPoc && (h.includes('世帯') || h.includes('家族'))) {
