@@ -116,10 +116,86 @@
                     </div>
                 </div>
                 <div id="loginError" class="text-red-500 text-sm text-center min-h-[1.25rem]"></div>
+                <div class="text-center">
+                    <button onclick="openResetRequest()"
+                        class="text-xs text-blue-500 hover:text-blue-700 underline">パスワードを忘れた場合</button>
+                </div>
                 <button onclick="doLogin()" id="loginBtn"
                     class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transform transition-transform active:scale-95">
                     ログイン
                 </button>
+            </div>
+        </div>
+
+        <!-- Password Reset Request Modal -->
+        <div id="resetRequestModal"
+            class="fixed inset-0 bg-gray-900 z-[60] hidden flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 class="text-xl font-bold text-gray-800">パスワード再設定</h3>
+                <p class="text-sm text-gray-500">ユーザーIDを入力してください。<br>登録されたメールアドレスに認証コードを送信します。</p>
+                <input type="text" id="resetUserId" class="w-full p-3 rounded-xl border border-gray-300"
+                    placeholder="ユーザーID">
+                <div id="resetReqError" class="text-red-500 text-xs text-center"></div>
+                <div class="flex gap-2">
+                    <button onclick="closeResetRequest()"
+                        class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">キャンセル</button>
+                    <button onclick="doRequestReset()" id="resetReqBtn"
+                        class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl">コードを送信</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Password Reset Verify Modal -->
+        <div id="resetVerifyModal" class="fixed inset-0 bg-gray-900 z-[60] hidden flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 class="text-xl font-bold text-gray-800">認証コード入力</h3>
+                <p class="text-sm text-gray-500">メールに届いた6桁のコードと、新しいパスワードを入力してください。</p>
+
+                <input type="text" id="resetCode" class="w-full p-3 rounded-xl border border-gray-300"
+                    placeholder="認証コード (6桁)">
+
+                <input type="password" id="resetNewPass" class="w-full p-3 rounded-xl border border-gray-300"
+                    placeholder="新しいパスワード">
+
+                <div id="resetVerError" class="text-red-500 text-xs text-center"></div>
+
+                <div class="flex gap-2">
+                    <button onclick="closeResetVerify()"
+                        class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl">キャンセル</button>
+                    <button onclick="doCompleteReset()" id="resetVerBtn"
+                        class="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl">再設定する</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Change Password Modal -->
+        <div id="changePassModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-[110] hidden flex items-center justify-center transition-opacity opacity-0">
+            <div
+                class="bg-white w-full max-w-sm mx-4 rounded-xl shadow-xl flex flex-col transform transition-transform scale-95 p-6 space-y-4">
+                <h3 class="font-bold text-gray-800 text-lg">パスワード変更</h3>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">現在のパスワード</label>
+                    <input type="password" id="chgCurrentPass" class="w-full p-2 border border-gray-300 rounded">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">新しいパスワード</label>
+                    <input type="password" id="chgNewPass" class="w-full p-2 border border-gray-300 rounded">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">新しいパスワード(確認)</label>
+                    <input type="password" id="chgConfirmPass" class="w-full p-2 border border-gray-300 rounded">
+                </div>
+
+                <div id="chgPassError" class="text-red-500 text-xs text-center min-h-[1rem]"></div>
+
+                <div class="flex gap-2 pt-2">
+                    <button onclick="closeChangePass()"
+                        class="flex-1 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg">キャンセル</button>
+                    <button onclick="doChangePass()" id="chgPassBtn"
+                        class="flex-1 py-2 bg-blue-600 text-white font-bold rounded-lg">変更する</button>
+                </div>
             </div>
         </div>
         <!-- Header -->
@@ -598,6 +674,19 @@
                         </div>
                     </div>
 
+                    <!-- Password Change -->
+                    <div class="border-t pt-4">
+                        <button onclick="openChangePass()"
+                            class="w-full py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                                </path>
+                            </svg>
+                            パスワード変更
+                        </button>
+                    </div>
+
                     <!-- Admin Settings Area -->
                     <div id="adminSettingsArea" class="hidden border-t pt-4">
                         <h4 class="text-sm font-bold text-red-600 mb-3">管理者設定</h4>
@@ -795,34 +884,43 @@
             // ... switchMode ...
 
             function checkLogin() {
+                const token = localStorage.getItem('GAS_AUTH_TOKEN');
                 const savedName = localStorage.getItem(STAFF_CACHE_KEY);
-                if (savedName) {
-                    // Validate staff is still active (not retired)
-                    google.script.run.withSuccessHandler(res => {
-                        if (res.active) {
-                            currentStaffName = savedName;
-                            document.getElementById('headerUserName').textContent = savedName + ' さん';
-                            document.getElementById('loginModal').classList.add('hidden');
 
-                            // Admin check
+                if (token) {
+                    // New Token Flow
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.valid) {
+                            // Valid Session
+                            currentStaffName = res.name;
+                            // Ensure name cache is synced (optional but good for UI consistency)
+                            localStorage.setItem(STAFF_CACHE_KEY, res.name);
+                            if (res.isAdmin) localStorage.setItem(STAFF_ADMIN_KEY, 'true');
+                            else localStorage.removeItem(STAFF_ADMIN_KEY);
+
+                            document.getElementById('headerUserName').textContent = res.name + ' さん';
+                            document.getElementById('loginModal').classList.add('hidden');
 
                             loadData(false);
                         } else {
-                            // Staff is retired or invalid, clear cache and show login
-                            localStorage.removeItem(STAFF_CACHE_KEY);
-                            localStorage.removeItem(STAFF_ADMIN_KEY);
-                            const err = document.getElementById('loginError');
-                            if (err) err.textContent = res.message || '再ログインしてください';
-                            document.getElementById('loginModal').classList.remove('hidden');
+                            // Invalid Session
+                            doLogout();
+                            document.getElementById('loginError').textContent = "セッションの有効期限が切れました";
                         }
-                    }).withFailureHandler(e => {
-                        console.error("Staff status check failed:", e);
-                        // On error, allow login but log the issue
-                        currentStaffName = savedName;
-                        document.getElementById('headerUserName').textContent = savedName + ' さん';
-                        document.getElementById('loginModal').classList.add('hidden');
-                        loadData(false);
-                    }).checkStaffActiveStatus(savedName);
+                    }).checkSession(token);
+                } else if (savedName) {
+                    // Legacy Fallback (Clear legacy and force login, OR check legacy active status?)
+                    // For security upgrade, we should FORCE relogin to get a token.
+                    // But if we want to be nice, we could allow one-time migration?
+                    // No, migration is backend. Frontend needs token.
+                    // If no token but we have name, it means "Old Login". 
+                    // Let's force logout to prompt for password to generate token.
+
+                    // console.log("Legacy storage found, clearing...");
+                    localStorage.removeItem(STAFF_CACHE_KEY);
+                    localStorage.removeItem(STAFF_ADMIN_KEY);
+                    document.getElementById('loginModal').classList.remove('hidden');
+                    document.getElementById('loginError').textContent = "セキュリティ強化のため、再ログインが必要です";
                 } else {
                     document.getElementById('loginModal').classList.remove('hidden');
                 }
@@ -1194,7 +1292,9 @@
                     btn.textContent = "ログイン";
                     if (res.success) {
                         currentStaffName = res.name;
-                        localStorage.setItem(STAFF_CACHE_KEY, res.name);
+                        // Save Token!
+                        localStorage.setItem('GAS_AUTH_TOKEN', res.token);
+                        localStorage.setItem(STAFF_CACHE_KEY, res.name); // Keep for display cache
 
                         // Admin Handling
                         if (res.isAdmin) {
@@ -1219,7 +1319,122 @@
             function doLogout() {
                 localStorage.removeItem(STAFF_CACHE_KEY);
                 localStorage.removeItem(STAFF_ADMIN_KEY);
+                localStorage.removeItem('GAS_AUTH_TOKEN');
                 location.reload();
+            }
+
+            // --- Password Reset Handlers ---
+            function openResetRequest() {
+                document.getElementById('loginModal').classList.add('hidden');
+                document.getElementById('resetRequestModal').classList.remove('hidden');
+            }
+            function closeResetRequest() {
+                document.getElementById('resetRequestModal').classList.add('hidden');
+                document.getElementById('loginModal').classList.remove('hidden');
+            }
+            function doRequestReset() {
+                const id = document.getElementById('resetUserId').value;
+                if (!id) return;
+
+                const btn = document.getElementById('resetReqBtn');
+                const err = document.getElementById('resetReqError');
+                btn.disabled = true; btn.textContent = "送信中..."; err.textContent = "";
+
+                google.script.run.withSuccessHandler(res => {
+                    btn.disabled = false; btn.textContent = "コードを送信";
+                    if (res.success) {
+                        // Switch to verify modal
+                        document.getElementById('resetRequestModal').classList.add('hidden');
+                        document.getElementById('resetVerifyModal').classList.remove('hidden');
+                        // Store temp ID for next step
+                        window._resetUserId = id;
+                    } else {
+                        err.textContent = res.message;
+                    }
+                }).withFailureHandler(e => {
+                    btn.disabled = false; btn.textContent = "コードを送信";
+                    err.textContent = "Error: " + e.message;
+                }).requestPasswordReset(id);
+            }
+
+            function closeResetVerify() {
+                document.getElementById('resetVerifyModal').classList.add('hidden');
+                document.getElementById('loginModal').classList.remove('hidden');
+            }
+
+            function doCompleteReset() {
+                const code = document.getElementById('resetCode').value;
+                const newPass = document.getElementById('resetNewPass').value;
+                const id = window._resetUserId;
+                const btn = document.getElementById('resetVerBtn');
+                const err = document.getElementById('resetVerError');
+
+                if (!code || !newPass) {
+                    err.textContent = "全ての項目を入力してください"; return;
+                }
+
+                btn.disabled = true; btn.textContent = "設定中..."; err.textContent = "";
+
+                google.script.run.withSuccessHandler(res => {
+                    btn.disabled = false; btn.textContent = "再設定する";
+                    if (res.success) {
+                        alert("パスワードがリセットされました。新しいパスワードでログインしてください。");
+                        closeResetVerify(); // Goes back to login
+                    } else {
+                        err.textContent = res.message;
+                    }
+                }).withFailureHandler(e => {
+                    btn.disabled = false; btn.textContent = "再設定する";
+                    err.textContent = "Error: " + e.message;
+                }).resetPasswordWithCode(id, code, newPass);
+            }
+
+            // --- Change Password Handlers ---
+            function openChangePass() {
+                // Must be closed inside settings if open
+                // Actually settings modal is z-100, we use z-110 for this.
+                const modal = document.getElementById('changePassModal');
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            }
+            function closeChangePass() {
+                const modal = document.getElementById('changePassModal');
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+            function doChangePass() {
+                const current = document.getElementById('chgCurrentPass').value;
+                const newP = document.getElementById('chgNewPass').value;
+                const conf = document.getElementById('chgConfirmPass').value;
+                const btn = document.getElementById('chgPassBtn');
+                const err = document.getElementById('chgPassError');
+
+                if (!current || !newP || !conf) {
+                    err.textContent = "入力してください"; return;
+                }
+                if (newP !== conf) {
+                    err.textContent = "新しいパスワードが一致しません"; return;
+                }
+
+                const token = localStorage.getItem('GAS_AUTH_TOKEN');
+                if (!token) {
+                    err.textContent = "再ログインが必要です"; return;
+                }
+
+                btn.disabled = true; btn.textContent = "処理中..."; err.textContent = "";
+
+                google.script.run.withSuccessHandler(res => {
+                    btn.disabled = false; btn.textContent = "変更する";
+                    if (res.success) {
+                        alert("パスワードを変更しました");
+                        closeChangePass();
+                    } else {
+                        err.textContent = res.message;
+                    }
+                }).withFailureHandler(e => {
+                    btn.disabled = false; btn.textContent = "変更する";
+                    err.textContent = "Error: " + e.message;
+                }).changePassword(token, current, newP);
             }
 
 
