@@ -379,23 +379,33 @@ function getData() {
             } else {
                 val = toStr(val);
                 // Anonymize details as well
-                if (h.includes('氏名') || (h === '姓' || h === '名')) {
+                if (h.includes('氏名') || h.includes('姓') || h.includes('名')) {
                     // Check if this is a secondary name field (Separate Surname/Name or Kana)
-                    if (h.includes('カナ') || h.includes('かな') || h === '姓' || h === '名') {
-                        if (isPoc) {
-                            // For separate Surname/Name/Kana fields in PoC mode, 
-                            // we mask them to prevent inconsistency with the anonymized Full Name ("Oda Nobunaga").
-                            // Showing "Toyotomi" for Surname and "Ieyasu" for Name is confusing.
-                            // Showing real Kana is a security leak.
-                            val = "―";
+                    // Now explicitly checking for 'カナ' or single '姓'/'名' characters to catch "姓（カナ）" etc.
+                    if (h.includes('カナ') || h.includes('かな') || h === '姓' || h === '名' || h.includes('姓') || h.includes('名')) {
+                        // Logic: Main "Name" is usually "氏名" or combined. 
+                        // If it's a breakdown like surname/given name or readings, we mask in PoC mode.
+                        // We need to be careful not to mask the main "氏名" if it exists in the header list (though usually we handle 'name' separately)
+                        // Actually, lines 350-355 generate the main display name. 
+                        // The loop is for "details". In details, we usually want to hide raw breakdown parts if we are anonymizing.
+
+                        // Refined Logic: If it contains 'カナ'/'かな', mask it. 
+                        // If it is exactly '姓' or '名', mask it.
+                        // If it contains '姓' or '名' AND isn't the full '氏名', mask it.
+                        const isSecondary = h.includes('カナ') || h.includes('かな') || (h.includes('姓') && h !== '氏名') || (h.includes('名') && h !== '氏名');
+
+                        if (isSecondary) {
+                            if (isPoc) {
+                                val = "―";
+                            } else {
+                                val = anonymizeName(val);
+                            }
                         } else {
-                            // If not PoC, show raw data (normally) but here we might need consistent anonymization?
-                            // No, if !isPoc, we return raw data. But wait, earlier lines check `if (isPoc)`.
-                            // anonymizeName handles checking isPoc internally.
+                            // Likely the full name field appearing in details
                             val = anonymizeName(val);
                         }
                     } else {
-                        // Main Full Name field
+                        // Fallback
                         val = anonymizeName(val);
                     }
                 } else if (h.includes('住所') || h.includes('駐車場')) {
