@@ -103,10 +103,10 @@
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">ユーザーID</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
                         <input type="text" id="loginEmail"
                             class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500"
-                            placeholder="ex: nakahara">
+                            placeholder="ex: staff@example.com">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
@@ -132,9 +132,9 @@
             class="fixed inset-0 bg-gray-900 z-[60] hidden flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4">
                 <h3 class="text-xl font-bold text-gray-800">パスワード再設定</h3>
-                <p class="text-sm text-gray-500">ユーザーIDを入力してください。<br>登録されたメールアドレスに認証コードを送信します。</p>
+                <p class="text-sm text-gray-500">登録したメールアドレスを入力してください。<br>認証コードを送信します。</p>
                 <input type="text" id="resetUserId" class="w-full p-3 rounded-xl border border-gray-300"
-                    placeholder="ユーザーID">
+                    placeholder="staff@example.com">
                 <div id="resetReqError" class="text-red-500 text-xs text-center"></div>
                 <div class="flex gap-2">
                     <button onclick="closeResetRequest()"
@@ -1479,7 +1479,7 @@
                 if (refreshBtn) refreshBtn.classList.add('animate-spin');
 
                 if (!force) {
-                    const cached = localStorage.getItem(CACHE_KEY);
+                    const cached = sessionStorage.getItem(CACHE_KEY); // Use SessionStorage
                     if (cached) {
                         const decrypted = decrypt(cached);
                         if (decrypted) {
@@ -1490,6 +1490,12 @@
                                 return;
                             } catch (e) { console.error("Cache parse error", e); }
                         }
+                    } else {
+                        // Migration: Check legacy localStorage one last time?
+                        // Optional: For security, better to ignore/delete legacy.
+                        if (localStorage.getItem(CACHE_KEY)) {
+                            localStorage.removeItem(CACHE_KEY); // Cleanup legacy
+                        }
                     }
                 }
 
@@ -1497,7 +1503,10 @@
                     try {
                         const json = JSON.stringify(data);
                         const encrypted = encrypt(json);
-                        if (encrypted) localStorage.setItem(CACHE_KEY, encrypted);
+                        if (encrypted) {
+                            sessionStorage.setItem(CACHE_KEY, encrypted); // Save to SessionStorage
+                            localStorage.removeItem(CACHE_KEY); // Ensure legacy is gone
+                        }
 
                         onDataLoaded(data, false);
                         if (force) showToast('データを更新しました');

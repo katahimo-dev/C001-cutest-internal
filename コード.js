@@ -19,6 +19,9 @@ function getPocConfig() {
 function savePocConfig(isEnabled) {
     const props = PropertiesService.getScriptProperties();
     props.setProperty(POC_CONFIG_KEY, String(isEnabled));
+    // Clear Data Cache so new settings apply
+    CacheService.getScriptCache().remove("CUSTOMER_DATA_V1_CACHE");
+    logToBuffer("SECURITY", "AnonymizeConfig", "Admin", `PoC Mode set to: ${isEnabled}`);
     return { success: true, message: "PoC設定を保存しました" };
 }
 
@@ -193,20 +196,41 @@ function getSheetByGid(ss, gid) {
 }
 
 /**
- * Fetches Customer data from the specified Spreadsheet/Sheet.
- * Columns: B (Surname/Name), S (Address).
- * Filter: Extract City from Address.
- */
-/**
- * Fetches Customer data from the specified Spreadsheet/Sheet.
- * Returns full data for detailed view.
- */
-/**
- * Fetches Customer data from the specified Spreadsheet/Sheet.
- * Returns full data for detailed view.
- * [PoC Mode] Anonymizes sensitive data.
+ * Fetches Customer data with Caching.
+ * Wraps the sheet access to improve performance.
  */
 function getData() {
+    const cache = CacheService.getScriptCache();
+    const CACHE_KEY = "CUSTOMER_DATA_V1_CACHE";
+
+    // 1. Try Cache
+    const cached = cache.get(CACHE_KEY);
+    if (cached) {
+        // console.log("Serving Customer Data from Cache");
+        return JSON.parse(cached);
+    }
+
+    // 2. Fetch from Sheet
+    const data = fetchDataFromSheet();
+
+    // 3. Save to Cache (Best Effort)
+    try {
+        // Cache for 6 hours (21600 sec)
+        // Note: extensive data might exceed 100KB limit of GAS Cache.
+        // If so, it throws. We catch it and proceed without caching.
+        cache.put(CACHE_KEY, JSON.stringify(data), 21600);
+    } catch (e) {
+        console.warn("Failed to cache customer data (likely size limit): " + e.message);
+    }
+
+    return data;
+}
+
+/**
+ * [Internal] Reads Customer data directly from Spreadsheet.
+ * Renamed from original getData.
+ */
+function fetchDataFromSheet() {
     const ss = getSpreadsheet();
     let cSheet = ss.getSheetByName(CUSTOMER_DB_NAME);
     let fSheet = ss.getSheetByName(FAMILY_DB_NAME);
@@ -529,7 +553,23 @@ function callGemini(apiKey, contentParts, generationConfig, modelName) {
         const text = json.candidates[0].content.parts[0].text;
         // Clean markdown JSON if present
         const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanText);
+        const parsed = JSON.parse(cleanText);
+
+        // Helper to unescape newlines in strings
+        const unescapeNewlines = (obj) => {
+            if (typeof obj === 'string') {
+                return obj.replace(/\\n/g, '\n');
+            } else if (Array.isArray(obj)) {
+                return obj.map(unescapeNewlines);
+            } else if (typeof obj === 'object' && obj !== null) {
+                Object.keys(obj).forEach(key => {
+                    obj[key] = unescapeNewlines(obj[key]);
+                });
+            }
+            return obj;
+        };
+
+        return unescapeNewlines(parsed);
 
     } catch (e) {
         return { error: "System Error: " + e.message };
@@ -741,13 +781,16 @@ function saveReport(reportData) {
             }
             // ------------------------------
 
+            logToBuffer("INFO", "SaveReport", reportData.staffName, `Saved report for ${reportData.customerName} (Row: ${savedRowIndex})`);
             return { success: true, message: "保存しました (" + imageStatus + ")", rowIndex: savedRowIndex };
         } catch (e) {
+            logToBuffer("ERROR", "SaveReportError", reportData.staffName, e.message);
             return { success: false, message: "エラーが発生しました: " + e.message };
         } finally {
             lock.releaseLock();
         }
     } else {
+        logToBuffer("WARN", "SaveReportFailed", reportData.staffName, "Server Busy (Lock Timeout)");
         return { success: false, message: "サーバーが混み合っているため保存できませんでした。しばらく待ってから再試行してください。" };
     }
 }
@@ -1004,7 +1047,7 @@ function checkStaffActiveStatus(staffName) {
             }
 
             if (retireDate && retireDate <= today) {
-                return { active: false, message: "退職済みのため、ログインできません" };
+                return { active: false, message: "ログインできないユーザーです" };
             }
         }
 
@@ -1057,19 +1100,19 @@ function verifyLogin(userId, password) {
         // Header is row 0. Data starts row 1.
 
         // Find User Row Index
-        // Col I (idx 8) = ID
+        // Col E (idx 4) = Email
         let userRowIndex = -1;
         let userRow = null;
 
         for (let i = 1; i < data.length; i++) {
-            if (String(data[i][8]) === userId) {
+            if (String(data[i][4]) === userId) { // Use Email (userId argument acts as email)
                 userRowIndex = i;
                 userRow = data[i];
                 break;
             }
         }
 
-        if (!userRow) return { success: false, message: "IDまたはパスワードが違います" };
+        if (!userRow) return { success: false, message: "メールアドレスまたはパスワードが違います" };
 
         // Check Retirement (Col H, idx 7)
         const retirementDate = userRow[7];
@@ -1080,6 +1123,7 @@ function verifyLogin(userId, password) {
             if (!isNaN(retireDate.getTime())) {
                 retireDate.setHours(0, 0, 0, 0);
                 if (retireDate <= today) {
+                    logToBuffer("WARN", "LoginFailed", userId || "unknown", "Retired user attempt");
                     return { success: false, message: "ログイン権限のないユーザーです" };
                 }
             }
@@ -1103,7 +1147,10 @@ function verifyLogin(userId, password) {
             migrated = true;
         }
 
-        if (!matched) return { success: false, message: "IDまたはパスワードが違います" };
+        if (!matched) {
+            logToBuffer("WARN", "LoginFailed", userId || "unknown", "Invalid password");
+            return { success: false, message: "メールアドレスまたはパスワードが違います" };
+        }
 
         // Generate Session Token
         const token = Utilities.getUuid();
@@ -1122,14 +1169,18 @@ function verifyLogin(userId, password) {
 
         const isAdmin = (userRow[10] == 1 || userRow[10] === '1');
 
+        logToBuffer("INFO", "LoginSuccess", userRow[1] + ` (${userId})`, "Session started");
+
         return {
             success: true,
             name: userRow[1],
+            isAdmin: isAdmin,
             isAdmin: isAdmin,
             token: token // Return token to client
         };
 
     } catch (e) {
+        logToBuffer("ERROR", "LoginError", userId || "unknown", e.message);
         return { success: false, message: e.message };
     } finally {
         lock.releaseLock();
@@ -1180,7 +1231,9 @@ function checkSession(token) {
                     }
 
                     const isAdmin = (data[i][10] == 1 || data[i][10] === '1');
-                    return { valid: true, name: data[i][1], isAdmin: isAdmin, userId: data[i][8] };
+                    // Return email as userId for consistency if needed, or actual ID. 
+                    // Let's return Col E (Email) as userId property to keep frontend compatible if it expects "ID".
+                    return { valid: true, name: data[i][1], isAdmin: isAdmin, userId: data[i][4] };
                 }
             }
         }
@@ -1211,10 +1264,9 @@ function requestPasswordReset(userId) {
     const data = sheet.getDataRange().getValues();
     let email = "";
 
-    // Find Email: Paging or search not available, must loop.
-    // Col I (idx 8) = ID, Col E (idx 4) = Email
+    // Find Email (Col E, idx 4)
     for (let i = 1; i < data.length; i++) {
-        if (String(data[i][8]) === userId) {
+        if (String(data[i][4]) === userId) {
             email = data[i][4];
             break;
         }
@@ -1312,7 +1364,7 @@ function resetPasswordWithCode(userId, code, newPassword) {
         let userRowIndex = -1;
 
         for (let i = 1; i < data.length; i++) {
-            if (String(data[i][8]) === userId) {
+            if (String(data[i][4]) === userId) {
                 userRowIndex = i;
                 break;
             }
@@ -1353,7 +1405,7 @@ function changePassword(token, currentPass, newPass) {
     let rowIndex = -1;
 
     for (let i = 1; i < data.length; i++) {
-        if (String(data[i][8]) === userId) {
+        if (String(data[i][4]) === userId) {
             rowIndex = i;
             break;
         }
@@ -1366,15 +1418,19 @@ function changePassword(token, currentPass, newPass) {
 
     // Verify Old
     if (storedPass !== currentHash && storedPass !== currentPass) {
+        logToBuffer("WARN", "ChangePasswordFailed", userId, "Incorrect current password attempt");
         return { success: false, message: "現在のパスワードが正しくありません" };
     }
 
-    // Update New
+    // Update
     const newHash = computeHash(newPass);
     sheet.getRange(rowIndex + 1, 10).setValue(newHash);
 
+    logToBuffer("SECURITY", "ChangePassword", userId, "Password changed successfully");
     return { success: true, message: "パスワードを変更しました" };
 }
+
+
 
 /**
  * Admin Migration Tool: Hash all plaintext passwords.
@@ -1459,12 +1515,14 @@ function checkAndImportLatestCsv() {
         const props = PropertiesService.getScriptProperties();
         const currentVersion = parseInt(props.getProperty('LATEST_CSV_VERSION') || '0', 10);
 
+        console.log(`CSV Check - Latest: ${latestTime}, Current: ${currentVersion}`);
+
         if (latestTime <= currentVersion) {
-            console.log("Already up to date. Latest: " + latestTime);
+            console.log("Already up to date.");
             return "Already up to date";
         }
 
-        console.log("Newer CSV found: " + latestFile.getName());
+        console.log("Newer CSV found, importing: " + latestFile.getName());
 
         // Read content
         // Try UTF-16LE first as it appeared in error logs, then Shift_JIS, then UTF-8
@@ -1497,6 +1555,7 @@ function checkAndImportLatestCsv() {
         if (result === "Upload Successful") {
             props.setProperty('LATEST_CSV_VERSION', latestTime.toString());
             console.log("Import Success");
+            logToBuffer("INFO", "AutoImport", "System", `Imported ${latestFile.getName()} (Version: ${latestTime})`);
             return "Imported: " + latestFile.getName();
         } else {
             console.error("Import Failed: " + result);
@@ -2357,3 +2416,209 @@ function migrateDataToFirestore() {
     return `Migration Completed. ${migratedCount} records processed.`;
 }
 */
+
+// --------------------------------------------------------------------------
+// Robust Logging System (Async + Safe)
+// --------------------------------------------------------------------------
+
+const LOG_BUFFER_KEY = "SYSTEM_LOG_BUFFER";
+const LOG_FOLDER_PROP_KEY = "SYSTEM_LOG_FOLDER_ID";
+const LOG_FILE_PREFIX = "app_log_";
+
+/**
+ * Adds a log entry to the buffer.
+ * If buffer is near full, it forces a flush to Drive immediately.
+ * 
+ * @param {string} level - "INFO", "WARN", "ERROR", "SECURITY"
+ * @param {string} action - Function name or User action
+ * @param {string} user - User email or ID
+ * @param {object|string} details - Detailed info object
+ */
+function logToBuffer(level, action, user, details) {
+    const lock = LockService.getScriptLock();
+    // Wait for other writes
+    if (lock.tryLock(10000)) {
+        try {
+            const props = PropertiesService.getScriptProperties();
+            let bufferStr = props.getProperty(LOG_BUFFER_KEY);
+            let buffer = [];
+
+            if (bufferStr) {
+                try {
+                    buffer = JSON.parse(bufferStr);
+                } catch (e) {
+                    // corrupted buffer, start new
+                    console.error("Log buffer corrupted, resetting.");
+                    buffer = [];
+                }
+            }
+
+            const entry = {
+                timestamp: Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss"),
+                level: level,
+                action: action,
+                user: user,
+                details: typeof details === 'object' ? JSON.stringify(details) : String(details)
+            };
+
+            buffer.push(entry);
+
+            const newBufferStr = JSON.stringify(buffer);
+
+            // PropertiesService limit is ~9KB. Safety margin at 7KB.
+            if (newBufferStr.length > 7000) {
+                // Buffer full: Flush immediately to Drive (Sync fallback)
+                console.warn("Log buffer full, forcing immediate flush.");
+                flushLogsToDriveLocked(buffer); // Reuse internal flush logic
+                props.deleteProperty(LOG_BUFFER_KEY);
+            } else {
+                // Buffer OK: Save to Property
+                props.setProperty(LOG_BUFFER_KEY, newBufferStr);
+            }
+
+        } catch (e) {
+            console.error("Logging Failed: " + e.message);
+        } finally {
+            lock.releaseLock();
+        }
+    } else {
+        console.error("Could not obtain lock for logging.");
+    }
+}
+
+/**
+ * Triggers the flush of buffered logs to Google Drive.
+ * Should be called by a Time-Driven Trigger (e.g., every 10 mins).
+ */
+function flushLogsToDrive() {
+    const lock = LockService.getScriptLock();
+    if (lock.tryLock(30000)) { // Long wait for flush
+        try {
+            const props = PropertiesService.getScriptProperties();
+            const bufferStr = props.getProperty(LOG_BUFFER_KEY);
+
+            if (!bufferStr) return; // Nothing to flush
+
+            let buffer = [];
+            try {
+                buffer = JSON.parse(bufferStr);
+            } catch (e) {
+                console.error("Buffer corrupted during flush.");
+                props.deleteProperty(LOG_BUFFER_KEY);
+                return;
+            }
+
+            if (buffer.length === 0) return;
+
+            // Flush
+            flushLogsToDriveLocked(buffer);
+
+            // Clear buffer after successful flush
+            props.deleteProperty(LOG_BUFFER_KEY);
+            console.log(`Flushed ${buffer.length} logs to Drive.`);
+
+        } catch (e) {
+            console.error("Flush Failed: " + e.message);
+        } finally {
+            lock.releaseLock();
+        }
+    }
+}
+
+/**
+ * Internal helper to write logs to Drive CSV.
+ * Assumes Lock is already held.
+ */
+function flushLogsToDriveLocked(buffer) {
+    const folder = getOrCreateLogFolder();
+    if (!folder) {
+        throw new Error("Log folder could not be found or created.");
+    }
+
+    // File name by Month (Rotate monthly) e.g. app_log_2024-01.csv
+    const now = new Date();
+    const yyyyMM = Utilities.formatDate(now, "Asia/Tokyo", "yyyy-MM");
+    const fileName = `${LOG_FILE_PREFIX}${yyyyMM}.csv`;
+
+    const files = folder.getFilesByName(fileName);
+    let file;
+    if (files.hasNext()) {
+        file = files.next();
+    } else {
+        // Create new CSV with header
+        file = folder.createFile(fileName, "Timestamp,Level,Action,User,Details\n", MimeType.CSV);
+    }
+
+    let newRows = "";
+    buffer.forEach(b => {
+        // Escape CSV special chars in details
+        const safeDetails = b.details.replace(/"/g, '""');
+        newRows += `${b.timestamp},${b.level},${b.action},${b.user},"${safeDetails}"\n`;
+    });
+
+    // Append using blob text
+    const combined = file.getBlob().getDataAsString() + newRows;
+    file.setContent(combined);
+}
+
+/**
+ * Gets the specific folder for logs.
+ * Folder ID: 1XyxzS8PMlOBIPU6NUbJbytZP0-_Kfx4-
+ */
+function getOrCreateLogFolder() {
+    const LOG_FOLDER_ID = "1XyxzS8PMlOBIPU6NUbJbytZP0-_Kfx4-";
+    try {
+        return DriveApp.getFolderById(LOG_FOLDER_ID);
+    } catch (e) {
+        console.error("Specified Log Folder not found: " + e.message);
+        return null;
+    }
+}
+
+/**
+ * One-time setup to create the trigger.
+ * Run this function once manually.
+ */
+function setupLogTrigger() {
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let t of triggers) {
+        if (t.getHandlerFunction() === 'flushLogsToDrive') {
+            return; // Already exists
+        }
+    }
+
+    // Create every 10 minutes
+    ScriptApp.newTrigger('flushLogsToDrive')
+        .timeBased()
+        .everyMinutes(10)
+        .create();
+}
+
+/**
+ * Stops the logging trigger.
+ * Run this manually to disable auto-flushing.
+ */
+function deleteLogTrigger() {
+    const triggers = ScriptApp.getProjectTriggers();
+    let count = 0;
+    for (let t of triggers) {
+        if (t.getHandlerFunction() === 'flushLogsToDrive') {
+            ScriptApp.deleteTrigger(t);
+            count++;
+        }
+    }
+    console.log(`Deleted ${count} log trigger(s).`);
+}
+
+/**
+ * Test function to verify logging and flushing.
+ */
+function testLogAndFlush() {
+    // 1. テストログを書き込む
+    logToBuffer("INFO", "TestLogging", "admin@example.com", "これはテストログです " + new Date());
+    console.log("ログをバッファに書き込みました。");
+
+    // 2. 強制的に保存を実行する
+    flushLogsToDrive();
+    console.log("保存処理を実行しました。Driveを確認してください。");
+}
