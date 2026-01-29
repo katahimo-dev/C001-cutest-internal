@@ -907,7 +907,7 @@
                             doLogout();
                             document.getElementById('loginError').textContent = "セッションの有効期限が切れました";
                         }
-                    }).checkSession(token);
+                    }).checkSession(token, true);
                 } else if (savedName) {
                     // Legacy Fallback (Clear legacy and force login, OR check legacy active status?)
                     // For security upgrade, we should FORCE relogin to get a token.

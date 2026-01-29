@@ -1191,7 +1191,7 @@ function verifyLogin(userId, password) {
  * Validates a session token.
  * Replaces checkStaffActiveStatus for Auth.
  */
-function checkSession(token) {
+function checkSession(token, isInitialLoad) {
     if (!token) return { valid: false };
 
     try {
@@ -1232,8 +1232,13 @@ function checkSession(token) {
 
                     const isAdmin = (data[i][10] == 1 || data[i][10] === '1');
                     // Return email as userId for consistency if needed, or actual ID. 
-                    // Let's return Col E (Email) as userId property to keep frontend compatible if it expects "ID".
-                    return { valid: true, name: data[i][1], isAdmin: isAdmin, userId: data[i][4] };
+                    const userId = data[i][4]; // Col E (Email)
+
+                    if (isInitialLoad) {
+                        logToBuffer("INFO", "AutoLogin", data[i][1] + ` (${userId})`, "Page Loaded / Session Validated");
+                    }
+
+                    return { valid: true, name: data[i][1], isAdmin: isAdmin, userId: userId };
                 }
             }
         }
