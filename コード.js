@@ -986,8 +986,10 @@ function saveAccidentReport(reportData) {
             }
             // ------------------------------
 
+            logToBuffer("INFO", "SaveAccidentReport", reportData.staffName, `Accident report saved for ${reportData.targetName} (Row: ${savedRowIndex})`);
             return { success: true, rowIndex: savedRowIndex };
         } catch (e) {
+            logToBuffer("ERROR", "SaveAccidentReportError", reportData.staffName, e.message);
             return "Error: " + e.message;
         } finally {
             lock.releaseLock();
@@ -1318,6 +1320,7 @@ function requestPasswordReset(userId) {
             subject: "【保育日報】パスワード再設定認証コード",
             body: `パスワード再設定のリクエストを受け付けました。\n以下の認証コードを入力してください。\n\nコード: ${code}\n有効期限: 30分`
         });
+        logToBuffer("SECURITY", "PasswordResetRequest", userId, "Reset code sent");
         return { success: true };
     } catch (e) {
         return { success: false, message: "メール送信に失敗しました: " + e.message };
@@ -1380,11 +1383,10 @@ function resetPasswordWithCode(userId, code, newPassword) {
         const hash = computeHash(newPassword);
         sheet.getRange(userRowIndex + 1, 10).setValue(hash); // Col J (10)
 
-        // Mark code as used? Or delete row?
-        // Deleting row is slow. Just let it be or mark used if we had a column.
-        // For simple log, leaving it is fine or clearing code.
+        // Mark code as used
         resetSheet.getRange(foundRowIndex, 3).setValue("USED");
 
+        logToBuffer("SECURITY", "PasswordReset", userId, "Password reset successfully via code");
         return { success: true, message: "パスワードを再設定しました" };
 
     } catch (e) {

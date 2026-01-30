@@ -741,6 +741,8 @@
 
         <script>
             let allCustomers = [];
+            let recognition = null;
+
             let generateReportTimeout = null;
             let saveReportTimeout = null;
             let loadingUIInterval = null;
@@ -2502,46 +2504,61 @@
                 }
 
                 const micBtn = document.getElementById('micBtn');
-                if (micBtn.disabled) return; // Prevent double click
 
-                const recognition = new SpeechRecognition();
+                // Toggle: If already recognizing, stop it.
+                if (recognition) {
+                    recognition.stop();
+                    return;
+                }
+
+                recognition = new SpeechRecognition();
 
                 recognition.lang = 'ja-JP';
                 recognition.interimResults = false;
                 recognition.maxAlternatives = 1;
+                // Enable continuous mode so it doesn't stop on short pauses
+                recognition.continuous = true;
 
                 // UI updating
-                micBtn.disabled = true;
                 micBtn.classList.add('bg-red-100', 'text-red-700');
-                micBtn.innerHTML = '<span class="animate-pulse">🔴</span> <span>聞いています...</span>';
-
-                recognition.start();
+                micBtn.innerHTML = '<span class="animate-pulse">🔴</span> <span>停止する</span>';
 
                 recognition.onresult = function (event) {
-                    const transcript = event.results[0][0].transcript;
                     const textarea = document.getElementById('reportInput');
-                    textarea.value = (textarea.value ? textarea.value + "\n" : "") + transcript;
+                    let newTranscript = "";
+
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            newTranscript += event.results[i][0].transcript;
+                        }
+                    }
+
+                    if (newTranscript) {
+                        textarea.value = (textarea.value ? textarea.value + "\n" : "") + newTranscript;
+                        textarea.scrollTop = textarea.scrollHeight;
+                        markDirty();
+                    }
                 };
 
                 // Using onend to guaranteed cleanup
                 recognition.onend = function () {
+                    recognition = null;
                     resetMicBtn();
                 };
 
                 recognition.onerror = function (event) {
                     console.error(event.error);
-                    // Alert specifically for troubleshooting
                     if (event.error === 'not-allowed') {
                         showToast('マイクの使用が許可されていません。ブラウザの設定で許可してください。', true);
-                    } else if (event.error === 'no-speech') {
-                        // Ignore, just silence
                     } else if (event.error === 'network') {
                         showToast('音声認識サーバーへの接続に失敗しました。', true);
-                    } else {
+                    } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
                         showToast('音声入力エラー: ' + event.error, true);
                     }
-                    resetMicBtn();
+                    // onend will fire and reset UI
                 };
+
+                recognition.start();
             }
 
             function resetMicBtn() {
