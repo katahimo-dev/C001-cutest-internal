@@ -1,0 +1,3 @@
+# Ignore docx directory and all pdf files in C001-cutest-internal
+docx/
+*.pdf
