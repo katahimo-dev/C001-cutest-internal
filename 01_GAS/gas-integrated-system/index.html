@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スマホde出勤簿修正</title>
+    <style>
+      /* --- 全体のベースデザイン --- */
+      body { 
+        font-family: "Hiragino Maru Gothic Pro", "Meiryo UI", sans-serif; 
+        padding: 0; margin: 0;
+        background-color: #fdfcf5; 
+        color: #4e342e; 
+        background-image: radial-gradient(#e8f5e9 2px, transparent 2px);
+        background-size: 30px 30px;
+        font-size: 16px;
+      }
+      
+      /* --- ヘッダーエリア --- */
+      .header-hero {
+        background: linear-gradient(135deg, #f39c12 0%, #f1c40f 100%);
+        padding: 20px 20px 40px;
+        text-align: center;
+        border-radius: 0 0 50% 50% / 0 0 30px 30px;
+        box-shadow: 0 4px 10px rgba(243, 156, 18, 0.2);
+        color: #fff;
+        margin-bottom: -30px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-illustration { width: 140px; height: 100px; margin-bottom: 5px; filter: drop-shadow(0 4px 0 rgba(0,0,0,0.1)); }
+
+      h2 { font-size: 24px; margin: 0; font-weight: bold; text-shadow: 1px 1px 0 rgba(0,0,0,0.1); letter-spacing: 1px; }
+      .user-name { 
+        font-size: 15px; margin-top: 10px; font-weight: bold; background: #fff; color: #f39c12; 
+        display: inline-block; padding: 6px 18px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      }
+
+      /* --- コンテンツ --- */
+      .container { padding: 20px; max-width: 600px; margin: 0 auto; padding-bottom: 50px; }
+
+      .card { 
+        background: white; padding: 25px 20px; border-radius: 20px; 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 30px; 
+        position: relative; z-index: 10; border: 2px solid #fff;
+      }
+      
+      .section-box {
+        border: 2px solid #8bc34a; border-radius: 15px; padding: 35px 20px 20px; 
+        margin-bottom: 30px; background-color: #fff; position: relative;
+      }
+      
+      .section-title {
+        position: absolute; top: -18px; left: 15px; background: #8bc34a; color: white; 
+        padding: 6px 20px; font-size: 16px; font-weight: bold; border-radius: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+
+      /* --- フォーム部品 --- */
+      label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 16px; color: #689f38; margin-top: 20px; }
+      label:first-child { margin-top: 5px; }
+      
+      /* ★修正：input[type="number"] を追加して、数字入力も大きくしました */
+      input[type="text"], input[type="date"], input[type="number"], select { 
+        width: 100%; padding: 12px; border: 2px solid #f1f8e9; border-radius: 12px; 
+        font-size: 18px; /* 文字サイズ大 */
+        box-sizing: border-box; height: 56px; 
+        background-color: #f9fbe7; transition: 0.3s; color: #4e342e;
+      }
+      input:focus, select:focus { border-color: #8bc34a; background-color: #fff; outline: none; }
+      
+      /* 読み取り専用フィールドのデザイン */
+      input[readonly] {
+        background-color: #eeeeee; color: #777; border-color: #ddd; cursor: not-allowed;
+      }
+      input[readonly]:focus {
+        border-color: #ddd; background-color: #eeeeee;
+      }
+
+      .row-group { display: flex; gap: 12px; align-items: flex-end; }
+      .col-half { flex: 1; min-width: 0; }
+
+      .time-wrapper { position: relative; display: flex; width: 100%; }
+      .time-wrapper input[type="time"] {
+        flex: 1; padding: 12px; border: 2px solid #f1f8e9; border-radius: 12px 0 0 12px; 
+        font-size: 19px; height: 56px; -webkit-appearance: none;
+        border-right: none; color: #4e342e; background-color: #f9fbe7;
+      }
+      .time-wrapper input:focus { background-color: #fff; border-color: #8bc34a; }
+
+      .clock-icon {
+        background: #f1f8e9; border: 2px solid #f1f8e9; border-left: none; border-radius: 0 12px 12px 0;
+        width: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; 
+        font-size: 24px; color: #8bc34a;
+      }
+      .time-wrapper input:focus + .clock-icon { border-color: #8bc34a; border-left: 2px solid #8bc34a; background: #fff; }
+
+      .date-group { display: flex; gap: 12px; }
+      .date-group input { flex: 1; }
+      
+      .search-btn { 
+        background-color: #8bc34a; color: white; border: none; padding: 0 25px; 
+        border-radius: 12px; font-weight: bold; font-size: 16px; height: 56px; box-shadow: 0 4px 0 #689f38;
+      }
+      .search-btn:active { transform: translateY(4px); box-shadow: none; }
+      .search-btn:disabled { background-color: #ccc; box-shadow: none; cursor: not-allowed; }
+
+      .save-btn { 
+        width: 100%; background: linear-gradient(to right, #f39c12, #e67e22); 
+        color: white; border: none; padding: 20px; border-radius: 35px; 
+        font-size: 20px; font-weight: bold; margin-top: 30px; 
+        box-shadow: 0 4px 10px rgba(230, 126, 34, 0.4);
+      }
+      .save-btn:disabled { background: #e0e0e0; box-shadow: none; color: #999; }
+
+      #loading, #error-msg, #success-msg { display: none; padding: 20px; margin-bottom: 25px; text-align: center; font-weight: bold; border-radius: 15px; font-size: 16px; }
+      #error-msg { color: #d32f2f; background: #ffcdd2; border: 2px solid #ef9a9a; }
+      #success-msg { color: #388e3c; background: #c8e6c9; border: 2px solid #a5d6a7; }
+      #form-area { display: none; animation: fadeIn 0.5s ease; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+      .footer-credit { text-align: center; margin-top: 40px; font-size: 12px; color: #aaa; font-weight: normal; }
+    </style>
+  </head>
+  <body>
+
+    <div class="header-hero">
+      <svg class="hero-illustration" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 100">
+        <g transform="translate(10, 20) rotate(-10)">
+          <path d="M15 80 L20 40 L25 80 Z" fill="#f1c40f" /><circle cx="20" cy="40" r="15" fill="#f1c40f" />
+          <circle cx="16" cy="36" r="2" fill="#333" /><path d="M15 25 L15 30 M25 25 L25 30" stroke="#f39c12" stroke-width="2" />
+          <circle cx="12" cy="45" r="3" fill="#e67e22" opacity="0.6" />
+        </g>
+        <g transform="translate(70, 30)">
+          <circle cx="0" cy="0" r="22" fill="#e67e22" /><circle cx="0" cy="0" r="15" fill="#f1c40f" />
+          <circle cx="-5" cy="-2" r="2" fill="#333" /><circle cx="5" cy="-2" r="2" fill="#333" />
+          <path d="M-2 5 Q0 8 2 5" stroke="#333" stroke-width="1.5" fill="none"/><polygon points="-5,-20 0,-10 5,-20" fill="#e74c3c" />
+        </g>
+        <g transform="translate(120, 40) rotate(10)">
+          <path d="M-15 0 Q0 -15 15 0 Q15 30 -15 30 Z" fill="#f39c12" /><circle cx="-6" cy="10" r="5" fill="#fff" />
+          <circle cx="6" cy="10" r="5" fill="#fff" /><circle cx="-6" cy="10" r="2" fill="#333" /><circle cx="6" cy="10" r="2" fill="#333" />
+          <path d="M-2 15 L0 18 L2 15" fill="#e67e22" /><path d="M-15 15 L-25 5 M15 15 L25 5" stroke="#f39c12" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <text x="30" y="20" font-size="15" fill="#fff">♪</text><text x="100" y="20" font-size="10" fill="#fff">♪</text>
+      </svg>
+      <h2>スマホde出勤簿修正</h2>
+      <div id="user-info" class="user-name">読み込み中...</div>
+    </div>
+
+    <div class="container">
+      <div id="error-msg"></div><div id="success-msg"></div>
+
+      <div class="card">
+        <label style="margin-top:0;">📅 修正したい日付</label>
+        <div class="date-group">
+          <input type="date" id="target-date" onchange="checkDateLimit()">
+          <button class="search-btn" id="search-btn" onclick="searchData()">表示</button>
+        </div>
+      </div>
+      <div id="loading"><div style="font-size:30px; color:#f39c12;">⏳</div><div style="color:#e67e22; font-size:16px;">データを検索中...</div></div>
+
+      <form id="attendance-form" onsubmit="handleFormSubmit(this); return false;">
+        <div id="form-area">
+          <input type="hidden" name="rowNumber" id="rowNumber">
+          <input type="hidden" name="targetDateStr" id="targetDateStr">
+
+          <div class="section-box">
+            <div class="section-title">業務 #1</div>
+            <label>📍 訪問先等 (C列)</label>
+            <input type="text" name="col_C" id="col_C" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            
+            <div class="row-group">
+              <div class="col-half"><label>始業 (D列)</label><div class="time-wrapper"><input type="time" name="col_D" id="col_D" step="60"><div class="clock-icon" onclick="openPicker('col_D')">🕒</div></div></div>
+              <div class="col-half"><label>終業 (E列)</label><div class="time-wrapper"><input type="time" name="col_E" id="col_E" step="60"><div class="clock-icon" onclick="openPicker('col_E')">🕒</div></div></div>
+            </div>
+            <label>⛅ 天候 (I列)</label><select name="col_I" id="col_I"><option value="">選択...</option></select>
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">業務 #2</div>
+            <label>📍 訪問先等 (L列)</label>
+            <input type="text" name="col_L" id="col_L" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            
+            <div class="row-group">
+              <div class="col-half"><label>始業 (M列)</label><div class="time-wrapper"><input type="time" name="col_M" id="col_M" step="60"><div class="clock-icon" onclick="openPicker('col_M')">🕒</div></div></div>
+              <div class="col-half"><label>終業 (N列)</label><div class="time-wrapper"><input type="time" name="col_N" id="col_N" step="60"><div class="clock-icon" onclick="openPicker('col_N')">🕒</div></div></div>
+            </div>
+            <label>⛅ 天候 (R列)</label><select name="col_R" id="col_R"><option value="">選択...</option></select>
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">業務 #3</div>
+            <label>📍 訪問先等 (U列)</label>
+            <input type="text" name="col_U" id="col_U" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            
+            <div class="row-group">
+              <div class="col-half"><label>始業 (V列)</label><div class="time-wrapper"><input type="time" name="col_V" id="col_V" step="60"><div class="clock-icon" onclick="openPicker('col_V')">🕒</div></div></div>
+              <div class="col-half"><label>終業 (W列)</label><div class="time-wrapper"><input type="time" name="col_W" id="col_W" step="60"><div class="clock-icon" onclick="openPicker('col_W')">🕒</div></div></div>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">作業 #1</div>
+            <label>📝 作業内容 (X列)</label><select name="col_X" id="col_X"><option value="">選択...</option></select>
+            <div class="row-group">
+              <div class="col-half"><label>開始 (Y列)</label><div class="time-wrapper"><input type="time" name="col_Y" id="col_Y" step="60"><div class="clock-icon" onclick="openPicker('col_Y')">🕒</div></div></div>
+              <div class="col-half"><label>終了 (Z列)</label><div class="time-wrapper"><input type="time" name="col_Z" id="col_Z" step="60"><div class="clock-icon" onclick="openPicker('col_Z')">🕒</div></div></div>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">作業 #2</div>
+            <label>📝 作業内容 (AA列)</label><select name="col_AA" id="col_AA"><option value="">選択...</option></select>
+            <div class="row-group">
+              <div class="col-half"><label>開始 (AB列)</label><div class="time-wrapper"><input type="time" name="col_AB" id="col_AB" step="60"><div class="clock-icon" onclick="openPicker('col_AB')">🕒</div></div></div>
+              <div class="col-half"><label>終了 (AC列)</label><div class="time-wrapper"><input type="time" name="col_AC" id="col_AC" step="60"><div class="clock-icon" onclick="openPicker('col_AC')">🕒</div></div></div>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">買物代行</div>
+            <label>🛒 買物回数 (AN列)</label>
+            <input type="number" name="col_AN" id="col_AN" placeholder="回数を入力 (例: 1)" min="0">
+          </div>
+
+          <div class="section-box">
+            <div class="section-title">その他</div>
+            <label>💬 備考 (AO列)</label><input type="text" name="col_AO" id="col_AO" placeholder="備考があれば入力">
+          </div>
+
+          <button type="submit" class="save-btn" id="submit-btn">修正を保存する</button>
+          <div class="footer-credit">Powered by かたひも</div>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      window.onload = function() {
+        var today = new Date();
+        var yyyy = today.getFullYear();
+        var mm = ("0" + (today.getMonth() + 1)).slice(-2);
+        var dd = ("0" + today.getDate()).slice(-2);
+        document.getElementById('target-date').value = yyyy + '-' + mm + '-' + dd;
+        
+        checkDateLimit();
+
+        google.script.run
+          .withSuccessHandler(function(data) {
+            if (data.success) {
+              document.getElementById('user-info').textContent = 'ようこそ ' + data.userName + ' さん';
+              setupDropdown('col_I', data.optionsI);
+              setupDropdown('col_R', data.optionsR);
+              setupDropdown('col_X', data.optionsX);
+              setupDropdown('col_AA', data.optionsAA);
+            } else {
+              showError("初期エラー: " + data.error);
+            }
+          })
+          .withFailureHandler(function(e) {
+            showError("サーバー接続エラー: " + e);
+          })
+          .getInitialData();
+      };
+
+      function showReadOnlyMsg() {
+        showError("🔒 この項目は管理者側で設定しているため、編集できません。");
+      }
+
+      function checkDateLimit() {
+        var dateVal = document.getElementById('target-date').value;
+        if (!dateVal) return;
+        var inputDate = new Date(dateVal.replace(/-/g, '/'));
+        var today = new Date();
+        inputDate.setHours(0,0,0,0); today.setHours(0,0,0,0);
+        var limitDate = new Date(today); limitDate.setDate(today.getDate() - 7);
+
+        var btn = document.getElementById('search-btn');
+        var form = document.getElementById('form-area');
+        if (inputDate < limitDate) {
+          showError("⚠️ 修正期限を過ぎています（7日前まで修正可）");
+          btn.disabled = true; form.style.display = 'none';
+        } else {
+          hideMessages();
+          btn.disabled = false;
+        }
+      }
+
+      function setupDropdown(id, options) {
+        var select = document.getElementById(id);
+        if (!options || options.length === 0) return;
+        select.innerHTML = '<option value="">(選択してください)</option>';
+        options.forEach(function(opt) {
+          var optionTag = document.createElement('option');
+          optionTag.value = opt; optionTag.text = opt; select.appendChild(optionTag);
+        });
+      }
+
+      function openPicker(id) { var el=document.getElementById(id); if(el&&el.showPicker)el.showPicker(); else el.focus(); }
+
+      function searchData() {
+        var dateVal = document.getElementById('target-date').value;
+        var btn = document.getElementById('search-btn');
+        if (!dateVal || btn.disabled) return;
+
+        showLoading(true); hideMessages();
+        document.getElementById('form-area').style.display = 'none';
+        document.getElementById('targetDateStr').value = dateVal;
+
+        google.script.run
+          .withSuccessHandler(displayForm)
+          .withFailureHandler(function(e){ showLoading(false); showError(e); })
+          .getDataByDate(dateVal);
+      }
+
+      function displayForm(result) {
+        showLoading(false);
+        if (!result.success) return showError(result.error);
+        document.getElementById('form-area').style.display = 'block';
+        document.getElementById('rowNumber').value = result.rowNumber;
+        
+        var d = result.rowData;
+        setValue('col_C', d.C); setValue('col_D', d.D); setValue('col_E', d.E); setValue('col_I', d.I);
+        setValue('col_L', d.L); setValue('col_M', d.M); setValue('col_N', d.N); setValue('col_R', d.R);
+        setValue('col_U', d.U); setValue('col_V', d.V); setValue('col_W', d.W);
+        setValue('col_X', d.X); setValue('col_Y', d.Y); setValue('col_Z', d.Z);
+        setValue('col_AA', d.AA); setValue('col_AB', d.AB); setValue('col_AC', d.AC);
+        setValue('col_AN', d.AN);
+        setValue('col_AO', d.AO);
+      }
+
+      function setValue(id, val) { var el=document.getElementById(id); if(el) el.value=val; }
+
+      function handleFormSubmit(form) {
+        var btn = document.getElementById('submit-btn');
+        btn.disabled = true; btn.textContent = "保存中...";
+        hideMessages();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            btn.disabled = false; btn.textContent = "修正を保存する";
+            if(res.success) {
+              showSuccess(res.message);
+            } else {
+              showError(res.error);
+            }
+          })
+          .withFailureHandler(function(e) {
+            btn.disabled = false; btn.textContent = "修正を保存する"; showError(e);
+          })
+          .updateData(form);
+      }
+
+      function showLoading(b) { document.getElementById('loading').style.display = b ? 'block' : 'none'; }
+      function showError(m) { var e=document.getElementById('error-msg'); e.innerText=m; e.style.display='block'; window.scrollTo({top:0, behavior:'smooth'}); }
+      
+      function showSuccess(m) { 
+        var s=document.getElementById('success-msg'); 
+        s.innerText=m; 
+        s.style.display='block';
+        window.scrollTo({ top: 0, behavior: 'smooth' }); 
+      }
+      
+      function hideMessages() { document.getElementById('error-msg').style.display='none'; document.getElementById('success-msg').style.display='none'; }
+    </script>
+  </body>
+</html>
