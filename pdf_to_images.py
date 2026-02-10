@@ -1,22 +1,47 @@
 # 必要なライブラリ
-# pip install pdf2image python-pptx pillow
+# pip install pymupdf
 
-from pdf2image import convert_from_path
+import fitz  # PyMuPDF
 import os
 
-PDF_PATH = 'Integrated_Childcare_System_Foundation.pdf'
+PDF_PATH = 'TAYO-LINE_Lite_開発提案.pdf'
+# ファイルが現在のディレクトリにない場合、親ディレクトリを探す
+if not os.path.exists(PDF_PATH) and os.path.exists(os.path.join('..', PDF_PATH)):
+    PDF_PATH = os.path.join('..', PDF_PATH)
+
 IMG_DIR = 'pdf_images'
 
 def pdf_to_images(pdf_path, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    images = convert_from_path(pdf_path)
+    doc = fitz.open(pdf_path)
     img_paths = []
-    for i, img in enumerate(images):
-        img_path = os.path.join(out_dir, f'page_{i+1}.png')
-        img.save(img_path, 'PNG')
-        img_paths.append(img_path)
+
+    for page_index in range(len(doc)):
+        page = doc[page_index]
+        image_list = page.get_images()
+        
+        for image_index, img in enumerate(image_list, start=1):
+            xref = img[0]
+            try:
+                pix = fitz.Pixmap(doc, xref)
+                # CMYK等の場合はRGBに変換
+                if pix.n - pix.alpha > 3:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                
+                # 画像ファイル名を生成 (常にPNG)
+                img_filename = f'page_{page_index + 1}_img_{image_index}.png'
+                img_path = os.path.join(out_dir, img_filename)
+                
+                pix.save(img_path)
+                img_paths.append(img_path)
+            except Exception as e:
+                print(f"警告: ページ{page_index + 1}の画像{image_index}の保存に失敗しました: {e}")
+            
     return img_paths
 
 if __name__ == '__main__':
-    img_paths = pdf_to_images(PDF_PATH, IMG_DIR)
-    print(f'画像保存完了: {img_paths}')
+    if os.path.exists(PDF_PATH):
+        img_paths = pdf_to_images(PDF_PATH, IMG_DIR)
+        print(f'画像保存完了: {len(img_paths)} 枚の画像を保存しました。')
+    else:
+        print(f'エラー: PDFファイルが見つかりません: {PDF_PATH}')
