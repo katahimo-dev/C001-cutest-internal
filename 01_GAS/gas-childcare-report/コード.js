@@ -768,13 +768,20 @@ function saveReport(reportData) {
                 const star = (n) => "★".repeat(Number(n) || 0) + "☆".repeat(5 - (Number(n) || 0));
                 let ratingsInfo = "";
                 if (reportData.riskRating || reportData.esRating) {
-                    ratingsInfo = "\n\n【評価指標】";
+                    ratingsInfo = "\n【評価指標】";
                     if (reportData.riskRating) ratingsInfo += `\nPSI: ${star(reportData.riskRating)} (${reportData.riskRating})`;
                     if (reportData.esRating) ratingsInfo += `\n満足度: ${star(reportData.esRating)} (${reportData.esRating})`;
                 }
 
-                // Requested format: Staff Name + Internal Report + Ratings
-                const lwText = `【日報提出】\n担当: ${reportData.staffName}\n\n${reportData.internalText}${ratingsInfo}`;
+                const visitTime = (reportData.start && reportData.end) ? `${reportData.start}〜${reportData.end}` : (reportData.start || "");
+
+                // Updated format: Staff, Customer, Time + Internal Report
+                const lwText = `【日報提出】
+担当: ${reportData.staffName}
+顧客名: ${reportData.customerName}
+訪問時間: ${visitTime}${ratingsInfo}
+
+${reportData.internalText}`;
                 sendToLineWorks(lwText);
             } catch (e) {
                 console.error("LineWorks Notification Failed: " + e.message);
@@ -970,6 +977,7 @@ function saveAccidentReport(reportData) {
                 const typeLabel = reportData.reportType || "事故報告";
                 const lwText = `【${typeLabel}】
 担当: ${reportData.staffName}
+顧客名: ${reportData.customerName}
 対象: ${reportData.targetName}
 生年月日: ${reportData.targetDob}
 発生日時: ${reportData.occurrenceTime}
@@ -977,7 +985,6 @@ function saveAccidentReport(reportData) {
 事故内容: ${reportData.accidentContent}
 発生状況: ${reportData.situation}
 発生時の対応: ${reportData.immediateResponse}
-保護者への対応: ${reportData.parentCorrespondence}
 診断名および処置状況: ${reportData.diagnosisTreatment}
 今後の対応: ${reportData.prevention}`;
                 sendToLineWorks(lwText);
