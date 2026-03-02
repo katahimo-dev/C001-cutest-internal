@@ -375,6 +375,50 @@
                         </div>
                     </div>
 
+                    <!-- Receipt Upload Section -->
+                    <div id="imageUploadSection" class="mt-4 border-t pt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-xs font-medium text-gray-500">領収書 (最大6枚)</label>
+                            <button onclick="uploadReceiptsOnly()" id="uploadReceiptOnlyBtn"
+                                class="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-md font-bold transition-colors">
+                                領収書登録
+                            </button>
+                        </div>
+                        <div id="receiptDuplicateWarning"
+                            class="hidden mb-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 whitespace-pre-wrap">
+                        </div>
+                        <div class="flex flex-wrap gap-2 items-start">
+                            <div id="imagePreviewContainer" class="flex flex-wrap gap-2">
+                            </div>
+
+                            <button onclick="triggerCamera()" id="addCameraBtn"
+                                class="w-20 h-20 border-2 border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center text-blue-500 hover:bg-blue-50 transition-colors bg-white">
+                                <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
+                                    </path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
+                                <span class="text-[10px] font-bold">カメラ撮影</span>
+                            </button>
+
+                            <button onclick="triggerGallery()" id="addGalleryBtn"
+                                class="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors bg-gray-50">
+                                <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+                                    </path>
+                                </svg>
+                                <span class="text-[10px] font-bold">アルバム</span>
+                            </button>
+                        </div>
+                        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden"
+                            onchange="handleFileSelect(this)">
+                        <input type="file" id="galleryInput" accept="image/*" multiple class="hidden"
+                            onchange="handleFileSelect(this)">
+                    </div>
+
                     <!-- Assessment Section (Compact) -->
                     <div id="assessmentSection"
                         class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
@@ -480,47 +524,6 @@
                             <strong>⚠️ 情報不足:</strong> <span id="warningsList"></span>
                         </div>
 
-
-
-                        <!-- Image Upload Section -->
-                        <div id="imageUploadSection" class="mt-4 border-t pt-3">
-                            <label class="block text-xs font-medium text-gray-500 mb-2">領収書・添付画像 (最大6枚)</label>
-                            <div class="flex flex-wrap gap-2 items-start">
-                                <!-- Previews -->
-                                <div id="imagePreviewContainer" class="flex flex-wrap gap-2">
-                                    <!-- Populated by JS -->
-                                </div>
-
-                                <!-- Add Button -->
-                                <!-- Add Button (Camera) -->
-                                <button onclick="triggerCamera()" id="addCameraBtn"
-                                    class="w-20 h-20 border-2 border-dashed border-blue-300 rounded-xl flex flex-col items-center justify-center text-blue-500 hover:bg-blue-50 transition-colors bg-white">
-                                    <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
-                                        </path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    </svg>
-                                    <span class="text-[10px] font-bold">カメラ撮影</span>
-                                </button>
-
-                                <!-- Add Button (Gallery) -->
-                                <button onclick="triggerGallery()" id="addGalleryBtn"
-                                    class="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors bg-gray-50">
-                                    <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
-                                        </path>
-                                    </svg>
-                                    <span class="text-[10px] font-bold">アルバム</span>
-                                </button>
-                            </div>
-                            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden"
-                                onchange="handleFileSelect(this)">
-                            <input type="file" id="galleryInput" accept="image/*" multiple class="hidden"
-                                onchange="handleFileSelect(this)">
-                        </div>
                     </div>
 
                     <!-- Action -->
@@ -2295,7 +2298,6 @@
                             internalText: document.getElementById('internalResult').value,
                             customerText: document.getElementById('customerResult').value,
                             staffName: currentStaffName,
-                            images: currentImages,
                             riskRating: assessmentRatings.risk,
                             esRating: assessmentRatings.es,
                             reportDate: dateStr,
@@ -2431,7 +2433,6 @@
                             internalText: document.getElementById('internalResult').value,
                             customerText: document.getElementById('customerResult').value,
                             staffName: currentStaffName,
-                            images: currentImages,
                             riskRating: assessmentRatings.risk,
                             esRating: assessmentRatings.es,
                             reportDate: dateStr,
@@ -2594,6 +2595,216 @@
                     toast.classList.add('opacity-0');
                 }, 3000);
             }
+
+            function hideReceiptDuplicateWarning() {
+                const warning = document.getElementById('receiptDuplicateWarning');
+                if (!warning) return;
+                warning.textContent = '';
+                warning.classList.add('hidden');
+            }
+
+            function buildReceiptTimestamp() {
+                const y = reportTargetDate.getFullYear();
+                const m = (reportTargetDate.getMonth() + 1).toString().padStart(2, '0');
+                const d = reportTargetDate.getDate().toString().padStart(2, '0');
+                const hour = document.getElementById('startHour').value || '00';
+                const minute = document.getElementById('startMinute').value || '00';
+                return `${y}/${m}/${d} ${hour}:${minute}:00`;
+            }
+
+            function showReceiptDuplicateWarning(duplicates) {
+                const warning = document.getElementById('receiptDuplicateWarning');
+                if (!warning || !duplicates || duplicates.length === 0) return;
+                const lines = duplicates.map((d, idx) => `${idx + 1}. ${d.timestamp || ''} / 顧客名:${d.customerName || (currentCustomer ? currentCustomer.name : '') || ''} / 金額:${d.amount || ''} / 名称:${d.storeName || ''}`);
+                warning.textContent = `⚠️ 既存の領収書と重複したため登録しませんでした。\n${lines.join('\n')}`;
+                warning.classList.remove('hidden');
+            }
+
+            const RECEIPT_LOCAL_KEY_PREFIX = 'GAS_RECEIPT_KEYS_V1_';
+            const RECEIPT_LOCAL_RETENTION_DAYS = 45;
+            const RECEIPT_LOCAL_RETENTION_MS = RECEIPT_LOCAL_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+            function normalizeReceiptAmountClient(val) {
+                if (val === null || val === undefined || val === '') return '';
+                const n = Number(String(val).replace(/,/g, '').trim());
+                if (isNaN(n)) return String(val).trim();
+                return String(n);
+            }
+
+            function normalizeReceiptTextClient(val) {
+                return (val === null || val === undefined) ? '' : String(val).trim();
+            }
+
+            function buildReceiptLocalDupKey(timestamp, customerId, amount, storeName) {
+                return [
+                    normalizeReceiptTextClient(timestamp),
+                    normalizeReceiptTextClient(customerId),
+                    normalizeReceiptAmountClient(amount),
+                    normalizeReceiptTextClient(storeName)
+                ].join('||');
+            }
+
+            function getReceiptLocalStorageBucket() {
+                const userKey = normalizeReceiptTextClient(currentStaffName || 'unknown');
+                return `${RECEIPT_LOCAL_KEY_PREFIX}${userKey}`;
+            }
+
+            function normalizeReceiptSavedAt(value, now) {
+                if (typeof value === 'number' && Number.isFinite(value)) {
+                    return value;
+                }
+                if (value && typeof value === 'object' && typeof value.savedAt === 'number' && Number.isFinite(value.savedAt)) {
+                    return value.savedAt;
+                }
+                if (value === true) {
+                    return now;
+                }
+                return 0;
+            }
+
+            function pruneReceiptLocalKeyMap(map) {
+                const now = Date.now();
+                const cutoff = now - RECEIPT_LOCAL_RETENTION_MS;
+                const pruned = {};
+
+                Object.entries(map || {}).forEach(([key, value]) => {
+                    const savedAt = normalizeReceiptSavedAt(value, now);
+                    if (savedAt >= cutoff) {
+                        pruned[key] = savedAt;
+                    }
+                });
+
+                return pruned;
+            }
+
+            function loadReceiptLocalKeyMap() {
+                try {
+                    const raw = localStorage.getItem(getReceiptLocalStorageBucket());
+                    if (!raw) return {};
+                    const parsed = JSON.parse(raw);
+                    if (!parsed || typeof parsed !== 'object') return {};
+                    const pruned = pruneReceiptLocalKeyMap(parsed);
+                    const parsedSize = Object.keys(parsed).length;
+                    const prunedSize = Object.keys(pruned).length;
+                    if (parsedSize !== prunedSize) {
+                        saveReceiptLocalKeyMap(pruned);
+                    }
+                    return pruned;
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function saveReceiptLocalKeyMap(map) {
+                try {
+                    const pruned = pruneReceiptLocalKeyMap(map || {});
+                    localStorage.setItem(getReceiptLocalStorageBucket(), JSON.stringify(pruned));
+                } catch (e) {
+                    console.warn('Failed to save local receipt keys:', e);
+                }
+            }
+
+            function uploadReceiptsOnly() {
+                if (!currentCustomer) {
+                    showToast('顧客を選択してください', true);
+                    return;
+                }
+                if (currentReportMode !== 'daily') {
+                    showToast('領収書アップロードは日報タブで実行してください', true);
+                    return;
+                }
+                if (!currentImages || currentImages.length === 0) {
+                    showToast('領収書画像を追加してください', true);
+                    return;
+                }
+                if (currentImages.some(i => i.loading)) {
+                    showToast('OCR処理中の画像があります。完了後に再実行してください', true);
+                    return;
+                }
+
+                const receiptTimestamp = buildReceiptTimestamp();
+                const localKeyMap = loadReceiptLocalKeyMap();
+                const localDuplicates = [];
+
+                currentImages.forEach((img, idx) => {
+                    const normalizedAmount = normalizeReceiptAmountClient(img.amount || '');
+                    const normalizedStore = normalizeReceiptTextClient(img.storeName || '');
+                    const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
+                    if (!canCheckDuplicate) return;
+
+                    const key = buildReceiptLocalDupKey(receiptTimestamp, currentCustomer.id, normalizedAmount, normalizedStore);
+                    if (localKeyMap[key]) {
+                        localDuplicates.push({
+                            index: idx,
+                            timestamp: receiptTimestamp,
+                            customerName: currentCustomer.name,
+                            amount: normalizedAmount,
+                            storeName: normalizedStore
+                        });
+                    }
+                });
+
+                if (localDuplicates.length > 0) {
+                    showReceiptDuplicateWarning(localDuplicates);
+                    showToast('同じ領収書が登録済みです', true);
+                    return;
+                }
+
+                const btn = document.getElementById('uploadReceiptOnlyBtn');
+                hideReceiptDuplicateWarning();
+                btn.disabled = true;
+                btn.textContent = 'アップロード中...';
+
+                const payloadImages = currentImages.map(i => ({
+                    data: i.data,
+                    amount: i.amount,
+                    storeName: i.storeName
+                }));
+
+                google.script.run.withSuccessHandler(res => {
+                    btn.disabled = false;
+                    btn.textContent = '領収書登録';
+
+                    if (!res || !res.success) {
+                        showToast((res && res.message) ? res.message : 'アップロードに失敗しました', true);
+                        return;
+                    }
+
+                    const latestMap = loadReceiptLocalKeyMap();
+                    payloadImages.forEach((img) => {
+                        const normalizedAmount = normalizeReceiptAmountClient(img.amount || '');
+                        const normalizedStore = normalizeReceiptTextClient(img.storeName || '');
+                        const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
+                        if (!canCheckDuplicate) return;
+
+                        const key = buildReceiptLocalDupKey(receiptTimestamp, currentCustomer.id, normalizedAmount, normalizedStore);
+                        latestMap[key] = Date.now();
+                    });
+                    saveReceiptLocalKeyMap(latestMap);
+
+                    const duplicateIndexes = new Set((res.duplicates || []).map(d => d.index));
+                    if (duplicateIndexes.size > 0) {
+                        showReceiptDuplicateWarning(res.duplicates);
+                        currentImages = currentImages.filter((_, idx) => duplicateIndexes.has(idx));
+                    } else {
+                        hideReceiptDuplicateWarning();
+                        currentImages = [];
+                    }
+                    renderImagePreviews();
+                    showToast(res.message || '領収書をアップロードしました');
+                }).withFailureHandler(e => {
+                    btn.disabled = false;
+                    btn.textContent = '領収書登録';
+                    showToast('Error: ' + e.message, true);
+                }).uploadReceiptsOnly({
+                    staffName: currentStaffName,
+                    customerId: currentCustomer.id,
+                    customerName: currentCustomer.name,
+                    receiptTimestamp: receiptTimestamp,
+                    images: payloadImages
+                });
+            }
+
             // Image Handling
             let currentImages = []; // Array of { data: base64, amount: number|string, loading: boolean }
 
@@ -2608,6 +2819,7 @@
             function handleFileSelect(input) {
                 const files = Array.from(input.files);
                 if (files.length === 0) return;
+                hideReceiptDuplicateWarning();
 
                 // Check limit
                 if (currentImages.length + files.length > 6) {
@@ -2762,6 +2974,9 @@
                 currentImages.splice(index, 1);
                 // Re-render will fix indices in handlers because it loops generic idx
                 renderImagePreviews();
+                if (currentImages.length === 0) {
+                    hideReceiptDuplicateWarning();
+                }
             }
 
             // Also reset images when opening modal
@@ -2770,6 +2985,7 @@
                 originalOpenModal(customer);
                 currentImages = []; // Reset
                 renderImagePreviews();
+                hideReceiptDuplicateWarning();
             };
 
         </script>

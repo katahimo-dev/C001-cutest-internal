@@ -1,0 +1,2 @@
+@font-face { font-family: 'Noto Sans CJK JP'; src: url('file:///C:/work/Tools/md2docx/target/release/NotoSansCJKjp-Regular.otf'); }
+body, .mermaid { font-family: 'Noto Sans CJK JP', 'Yu Gothic', 'MS Gothic', 'Meiryo', sans-serif; }

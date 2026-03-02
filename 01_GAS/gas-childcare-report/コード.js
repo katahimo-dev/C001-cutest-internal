@@ -743,26 +743,6 @@ function saveReport(reportData) {
                 savedRowIndex = sheet.getLastRow();
             }
 
-            // Handle Image Uploads with Amount
-            let imageStatus = "No Images";
-            if (reportData.images && reportData.images.length > 0) {
-                try {
-                    const count = processReceiptImages(
-                        reportData.images,
-                        reportData.staffName,
-                        reportData.customerId,
-                        reportData.customerName,
-                        timestampJST
-                    );
-                    imageStatus = `Uploaded ${count} images`;
-                } catch (e) {
-                    console.error("Image Upload Failed: " + e.message);
-                    // We return the error details so the frontend can warn the user
-                    // even if the report text was saved.
-                    return { success: true, message: "日報は保存されましたが、画像保存に失敗しました: " + e.message };
-                }
-            }
-
             // --- LineWorks Notification ---
             try {
                 const star = (n) => "★".repeat(Number(n) || 0) + "☆".repeat(5 - (Number(n) || 0));
@@ -789,7 +769,7 @@ ${reportData.internalText}`;
             // ------------------------------
 
             logToBuffer("INFO", "SaveReport", reportData.staffName, `Saved report for ${reportData.customerName} (Row: ${savedRowIndex})`);
-            return { success: true, message: "保存しました (" + imageStatus + ")", rowIndex: savedRowIndex };
+            return { success: true, message: "保存しました", rowIndex: savedRowIndex };
         } catch (e) {
             logToBuffer("ERROR", "SaveReportError", reportData.staffName, e.message);
             return { success: false, message: "エラーが発生しました: " + e.message };
@@ -807,7 +787,9 @@ ${reportData.internalText}`;
  * Updated to handle Amount, CustomerID, CustomerName, StoreName and Timestamp from report
  */
 function processReceiptImages(imagesData, staffId, customerId, customerName, reportTimestamp) {
-    if (!imagesData || imagesData.length === 0) return 0;
+    if (!imagesData || imagesData.length === 0) {
+        return { uploadedCount: 0, duplicates: [] };
+    }
 
     const folder = DriveApp.getFolderById(RECEIPT_FOLDER_ID);
     const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
@@ -823,18 +805,62 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
     const now = new Date();
     const filePrefix = Utilities.formatDate(now, "Asia/Tokyo", "yyyyMMdd_HHmmss");
 
+    const normalizeAmount = (val) => {
+        if (val === null || val === undefined || val === "") return "";
+        const n = Number(String(val).replace(/,/g, '').trim());
+        if (isNaN(n)) return String(val).trim();
+        return String(n);
+    };
+
+    const normalizeText = (val) => {
+        return (val === null || val === undefined) ? "" : String(val).trim();
+    };
+
+    const buildKey = (ts, cId, amount, storeName) => {
+        return [normalizeText(ts), normalizeText(cId), normalizeAmount(amount), normalizeText(storeName)].join('||');
+    };
+
+    const existingKeys = new Set();
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+        const rows = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+        rows.forEach(row => {
+            const key = buildKey(row[0], row[2], row[4], row[5]);
+            existingKeys.add(key);
+        });
+    }
+
     let successCount = 0;
+    const duplicates = [];
 
     // Support legacy array of strings or new array of objects
     imagesData.forEach((item, index) => {
         let base64Data = "";
         let amount = "";
+        let storeName = "";
 
         if (typeof item === 'string') {
             base64Data = item;
         } else {
             base64Data = item.data;
             amount = item.amount;
+            storeName = item.storeName || '';
+        }
+
+        const normalizedAmount = normalizeAmount(amount || '');
+        const normalizedStore = normalizeText(storeName || '');
+        const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
+        const duplicateKey = buildKey(timestamp, customerId || '', normalizedAmount, normalizedStore);
+
+        if (canCheckDuplicate && existingKeys.has(duplicateKey)) {
+            duplicates.push({
+                index: index,
+                timestamp: timestamp,
+                customerId: customerId || '',
+                amount: normalizedAmount,
+                storeName: normalizedStore
+            });
+            return;
         }
 
         const split = base64Data.split(',');
@@ -848,14 +874,64 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
         const file = folder.createFile(blob);
         const fileUrl = file.getUrl();
 
-        // Extract storeName from item if available
-        const storeName = (typeof item === 'object' && item.storeName) ? item.storeName : '';
-
         // Append to Spreadsheet with new columns
         sheet.appendRow([timestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl]);
+        if (canCheckDuplicate) {
+            existingKeys.add(duplicateKey);
+        }
         successCount++;
     });
-    return successCount;
+
+    return { uploadedCount: successCount, duplicates: duplicates };
+}
+
+/**
+ * Uploads receipt images without saving a daily report.
+ * Duplicate keys are blocked by: timestamp + customerId + amount + storeName.
+ */
+function uploadReceiptsOnly(uploadData) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) {
+        return { success: false, message: "サーバーが混み合っています。しばらくしてから再試行してください。" };
+    }
+
+    try {
+        if (!uploadData || !uploadData.images || uploadData.images.length === 0) {
+            return { success: false, message: "領収書画像がありません。" };
+        }
+
+        const receiptTimestamp = uploadData.receiptTimestamp || Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
+        const result = processReceiptImages(
+            uploadData.images,
+            uploadData.staffName || '',
+            uploadData.customerId || '',
+            uploadData.customerName || '',
+            receiptTimestamp
+        );
+
+        const duplicateCount = result.duplicates.length;
+        const uploadedCount = result.uploadedCount;
+
+        let message = `領収書を${uploadedCount}件アップロードしました`;
+        if (duplicateCount > 0) {
+            message += `（重複${duplicateCount}件は登録しませんでした）`;
+        }
+
+        logToBuffer("INFO", "UploadReceiptsOnly", uploadData.staffName || "unknown", `Customer=${uploadData.customerName || ''}, Uploaded=${uploadedCount}, Duplicates=${duplicateCount}`);
+
+        return {
+            success: true,
+            message: message,
+            uploadedCount: uploadedCount,
+            duplicateCount: duplicateCount,
+            duplicates: result.duplicates
+        };
+    } catch (e) {
+        logToBuffer("ERROR", "UploadReceiptsOnlyError", (uploadData && uploadData.staffName) || "unknown", e.message);
+        return { success: false, message: "領収書アップロードでエラーが発生しました: " + e.message };
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 /**
@@ -985,6 +1061,7 @@ function saveAccidentReport(reportData) {
 事故内容: ${reportData.accidentContent}
 発生状況: ${reportData.situation}
 発生時の対応: ${reportData.immediateResponse}
+保護者への対応: ${reportData.parentCorrespondence}
 診断名および処置状況: ${reportData.diagnosisTreatment}
 今後の対応: ${reportData.prevention}`;
                 sendToLineWorks(lwText);

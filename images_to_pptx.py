@@ -7,7 +7,7 @@ from PIL import Image
 import os
 
 IMG_DIR = 'pdf_images'
-PPTX_PATH = 'Integrated_Childcare_System_Foundation.pptx'
+PPTX_PATH = 'TAYO-LINE_Lite_開発提案.pptx'
 
 # スライドサイズ（A4横, 単位:EMU）
 SLIDE_WIDTH = Inches(11.69)
@@ -19,11 +19,16 @@ def images_to_pptx(img_dir, pptx_path):
     prs.slide_height = SLIDE_HEIGHT
     import re
     def sort_key(filename):
-        m = re.search(r'page_(\d+)\\.png|page_(\d+)\.png', filename)
+        # page_X_img_Y.ext または page_X.ext に対応
+        m = re.search(r'page_(\d+)(?:_img_(\d+))?', filename)
         if m:
-            return int(m.group(1) or m.group(2))
-        return 0
-    img_files = sorted([f for f in os.listdir(img_dir) if f.endswith('.png')], key=sort_key)
+            page_num = int(m.group(1))
+            img_num = int(m.group(2)) if m.group(2) else 0
+            return (page_num, img_num)
+        return (0, 0)
+        
+    valid_exts = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.jpx')
+    img_files = sorted([f for f in os.listdir(img_dir) if f.lower().endswith(valid_exts)], key=sort_key)
     for img_file in img_files:
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # 白紙
         img_path = os.path.join(img_dir, img_file)
