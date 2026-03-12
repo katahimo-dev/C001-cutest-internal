@@ -712,7 +712,7 @@
 
                 </div>
                 <div class="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end">
-                    <button onclick="saveSettings()"
+                    <button id="settingsSaveBtn" onclick="saveSettings()"
                         class="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700">保存して閉じる</button>
                 </div>
             </div>
@@ -846,6 +846,33 @@
             const STAFF_CACHE_KEY = 'GAS_STAFF_SESSION_V3';
             const STAFF_ADMIN_KEY = 'GAS_STAFF_ADMIN';
             const ENC_KEY = 123; // Simple key
+            let adminSettingsLoadState = {
+                lwLoaded: false,
+                pocLoaded: false,
+                lwLoading: false,
+                pocLoading: false
+            };
+
+            function updateSettingsSaveButtonState() {
+                const btn = document.getElementById('settingsSaveBtn');
+                if (!btn) return;
+                if (btn.dataset.saving === '1') return;
+
+                const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
+                const adminMode = (isAdmin === '1' || isAdmin === 'true');
+
+                if (!adminMode) {
+                    btn.disabled = false;
+                    btn.textContent = '保存して閉じる';
+                    return;
+                }
+
+                const isLoading = adminSettingsLoadState.lwLoading || adminSettingsLoadState.pocLoading;
+                const isReady = adminSettingsLoadState.lwLoaded && adminSettingsLoadState.pocLoaded;
+
+                btn.disabled = !isReady || isLoading;
+                btn.textContent = (!isReady || isLoading) ? '読み込み中...' : '保存して閉じる';
+            }
 
             // Initialize
             window.onload = function () {
@@ -1063,6 +1090,8 @@
 
             function openSettings() {
                 const modal = document.getElementById('settingsModal');
+                const saveBtn = document.getElementById('settingsSaveBtn');
+                if (saveBtn) saveBtn.dataset.saving = '0';
 
                 // 1. Setup Admin Area visibility
                 const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
@@ -1073,23 +1102,72 @@
                     // Load current setting if Admin
                     const input = document.getElementById('settingLwTargetId');
                     const pocCheck = document.getElementById('settingPocMode');
+                    adminSettingsLoadState = {
+                        lwLoaded: false,
+                        pocLoaded: false,
+                        lwLoading: true,
+                        pocLoading: true
+                    };
 
-                    if (input.value === "" || input.value === "Loading..." || input.value === "Error") {
-                        input.value = "Loading...";
-                        google.script.run.withSuccessHandler(id => {
-                            input.value = id;
-                        }).withFailureHandler(e => {
-                            input.value = "Error";
-                        }).getLwTargetId();
+                    if (input) {
+                        input.value = '';
+                        input.placeholder = 'Loading...';
+                        input.disabled = true;
                     }
+                    if (pocCheck) {
+                        pocCheck.disabled = true;
+                    }
+                    updateSettingsSaveButtonState();
+
+                    google.script.run.withSuccessHandler(id => {
+                        if (input) {
+                            input.value = id || '';
+                            input.placeholder = '';
+                            input.disabled = false;
+                        }
+                        adminSettingsLoadState.lwLoaded = true;
+                        adminSettingsLoadState.lwLoading = false;
+                        updateSettingsSaveButtonState();
+                    }).withFailureHandler(e => {
+                        if (input) {
+                            input.value = '';
+                            input.placeholder = '取得失敗';
+                            input.disabled = true;
+                        }
+                        adminSettingsLoadState.lwLoaded = false;
+                        adminSettingsLoadState.lwLoading = false;
+                        updateSettingsSaveButtonState();
+                        showToast("LineWorks通知先IDの取得に失敗しました: " + e.message, true);
+                    }).getLwTargetId();
 
                     // Load PoC Mode Config
                     google.script.run.withSuccessHandler(isPoc => {
-                        if (pocCheck) pocCheck.checked = isPoc;
+                        if (pocCheck) {
+                            pocCheck.checked = isPoc;
+                            pocCheck.disabled = false;
+                        }
+                        adminSettingsLoadState.pocLoaded = true;
+                        adminSettingsLoadState.pocLoading = false;
+                        updateSettingsSaveButtonState();
+                    }).withFailureHandler(e => {
+                        if (pocCheck) {
+                            pocCheck.disabled = true;
+                        }
+                        adminSettingsLoadState.pocLoaded = false;
+                        adminSettingsLoadState.pocLoading = false;
+                        updateSettingsSaveButtonState();
+                        showToast("PoC設定の取得に失敗しました: " + e.message, true);
                     }).getPocConfig();
 
                 } else {
                     adminArea.classList.add('hidden');
+                    adminSettingsLoadState = {
+                        lwLoaded: false,
+                        pocLoaded: false,
+                        lwLoading: false,
+                        pocLoading: false
+                    };
+                    updateSettingsSaveButtonState();
                 }
 
                 // 2. Setup Font Size Radio Selection
@@ -1116,15 +1194,29 @@
 
             function saveSettings() {
                 const isAdmin = localStorage.getItem(STAFF_ADMIN_KEY);
+                const btn = document.getElementById('settingsSaveBtn');
 
                 // Only save Admin Settings if Admin
                 if (isAdmin === '1' || isAdmin === 'true') {
-                    const newId = document.getElementById('settingLwTargetId').value;
+                    const isLoading = adminSettingsLoadState.lwLoading || adminSettingsLoadState.pocLoading;
+                    const isReady = adminSettingsLoadState.lwLoaded && adminSettingsLoadState.pocLoaded;
+                    if (!isReady || isLoading) {
+                        showToast("管理者設定の読み込み完了後に保存してください", true);
+                        return;
+                    }
+
+                    const newId = (document.getElementById('settingLwTargetId').value || '').trim();
                     const pocCheck = document.getElementById('settingPocMode');
                     const isPoc = pocCheck ? pocCheck.checked : false;
 
-                    const btn = document.querySelector('#settingsModal button[onclick="saveSettings()"]');
+                    if (!newId || newId === 'Loading...' || newId === 'Error') {
+                        showToast("有効なLineWorks通知先IDを入力してください", true);
+                        return;
+                    }
+
+                    if (!btn) return;
                     const originalText = btn.textContent;
+                    btn.dataset.saving = '1';
                     btn.disabled = true;
                     btn.textContent = "保存中...";
 
@@ -1132,10 +1224,16 @@
                     google.script.run.withSuccessHandler(res1 => {
                         if (res1 && !res1.success) {
                             console.error("LW ID Save Failed", res1);
+                            btn.dataset.saving = '0';
+                            btn.disabled = false;
+                            btn.textContent = originalText;
+                            showToast("LW ID保存に失敗しました", true);
+                            return;
                         }
 
                         // 2. Save PoC Config
                         google.script.run.withSuccessHandler(res2 => {
+                            btn.dataset.saving = '0';
                             btn.disabled = false;
                             btn.textContent = originalText;
 
@@ -1146,16 +1244,18 @@
                             loadData(true);
 
                         }).withFailureHandler(e => {
+                            btn.dataset.saving = '0';
                             btn.disabled = false;
                             btn.textContent = originalText;
                             showToast("PoC設定保存エラー: " + e.message, true);
                         }).savePocConfig(isPoc);
 
                     }).withFailureHandler(e => {
+                        btn.dataset.saving = '0';
                         btn.disabled = false;
                         btn.textContent = originalText;
                         showToast("LW ID保存エラー: " + e.message, true);
-                    }).saveLwTargetId(newId);
+                    }).saveLwTargetId(newId, currentStaffName || "Admin");
 
                     return;
                 }

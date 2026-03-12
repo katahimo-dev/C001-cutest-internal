@@ -31,9 +31,22 @@ function getLwTargetId() {
  * Saves the Global Target ID. 
  * Only admins should call this (check on frontend or separate verification).
  */
-function saveLwTargetId(newId) {
-    if (!newId) return "ID cannot be empty";
-    PropertiesService.getScriptProperties().setProperty(LW_PROPS.TARGET_ID, newId.trim());
+function saveLwTargetId(newId, updatedBy) {
+    const user = (updatedBy && String(updatedBy).trim()) ? String(updatedBy).trim() : "Admin";
+    if (!newId) return { success: false, message: "ID cannot be empty" };
+
+    const trimmedId = String(newId).trim();
+    if (!trimmedId) return { success: false, message: "ID cannot be empty" };
+
+    const previousId = getLwTargetId();
+
+    if (previousId === trimmedId) {
+        logToBuffer("SECURITY", "LineWorksTargetIdUnchanged", user, `No change. targetId=${trimmedId}`);
+        return { success: true, message: "通知先IDは変更ありません" };
+    }
+
+    PropertiesService.getScriptProperties().setProperty(LW_PROPS.TARGET_ID, trimmedId);
+    logToBuffer("SECURITY", "LineWorksTargetIdChanged", user, `Changed LineWorks Target ID from "${previousId}" to "${trimmedId}"`);
     return { success: true, message: "通知先IDを保存しました" };
 }
 
