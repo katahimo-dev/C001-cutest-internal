@@ -230,6 +230,15 @@
 
             <!-- Filters -->
             <div class="mb-6 space-y-3">
+                <button onclick="openStandaloneReceiptModal()"
+                    class="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow border border-amber-700 flex items-center justify-center gap-2 mb-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                        </path>
+                    </svg>
+                    領収書登録
+                </button>
                 <div class="flex gap-2">
                     <div class="relative flex-grow">
                         <input type="text" id="searchInput" placeholder="顧客名で検索..."
@@ -284,7 +293,7 @@
                 </div>
 
                 <!-- Tabs -->
-                <div class="flex border-b border-gray-200">
+                <div class="flex border-b border-gray-200" id="modalTabs">
                     <button onclick="switchMode('daily')" id="tabDaily"
                         class="flex-1 py-3 text-sm font-medium text-blue-600 border-b-2 border-blue-600 transition-colors">保育日報</button>
                     <button onclick="switchMode('accident')" id="tabAccident"
@@ -313,7 +322,7 @@
                 <!-- Modal Body -->
                 <div class="p-4 overflow-y-auto flex-grow space-y-4">
                     <!-- Date (Shared) -->
-                    <div class="mb-4">
+                    <div class="mb-4" id="modalDateSection">
                         <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-300">
                             <button onclick="changeDate(-1)"
                                 class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors">
@@ -337,7 +346,7 @@
                     </div>
 
                     <!-- Time (Shared) -->
-                    <div class="grid grid-cols-1 gap-4">
+                    <div class="grid grid-cols-1 gap-4" id="modalTimeSection">
                         <!-- Start Time -->
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">開始時間/発生時間</label>
@@ -372,6 +381,14 @@
                                     <option value="45">45</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <!-- Visit Complete Button -->
+                        <div id="visitCompleteContainer" class="mt-2 text-right">
+                            <button onclick="sendVisitComplete()" id="visitCompleteBtn"
+                                class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md font-bold transition-colors">
+                                訪問完了
+                            </button>
                         </div>
                     </div>
 
@@ -417,6 +434,12 @@
                             onchange="handleFileSelect(this)">
                         <input type="file" id="galleryInput" accept="image/*" multiple class="hidden"
                             onchange="handleFileSelect(this)">
+                        <div class="mt-3">
+                            <label class="block text-xs font-medium text-gray-500 mb-1">申し送り</label>
+                            <textarea id="receiptHandoff" rows="2"
+                                class="w-full p-2 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                                placeholder="領収書に関する申し送り事項があれば入力"></textarea>
+                        </div>
                     </div>
 
                     <!-- Assessment Section (Compact) -->
@@ -482,7 +505,7 @@
 
 
                     <!-- Input -->
-                    <div>
+                    <div id="modalInputSection">
                         <!-- Incident Type Selector -->
                         <div id="accidentTypeSelector" class="hidden mb-2">
                             <div class="flex gap-4 p-2 bg-gray-50 rounded-lg border border-gray-100">
@@ -694,9 +717,14 @@
                     <div id="adminSettingsArea" class="hidden border-t pt-4">
                         <h4 class="text-sm font-bold text-red-600 mb-3">管理者設定</h4>
                         <div>
-                            <label class="block text-xs font-bold text-gray-600 mb-1">LineWorks 通知先ID</label>
-                            <p class="text-xs text-gray-400 mb-2">トークルームID または ユーザーID</p>
+                            <p class="text-xs text-gray-400 mb-2">LineWorksトークルームID または ユーザーID</p>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">訪問通知</label>
                             <input type="text" id="settingLwTargetId" placeholder="Loading..."
+                                class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="mt-4">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">領収書通知</label>
+                            <input type="text" id="settingReceiptLwTargetId" placeholder="Loading..."
                                 class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
                             <p class="text-[10px] text-gray-400 mt-1">※ 全ユーザー共通の設定です</p>
                         </div>
@@ -1114,6 +1142,12 @@
                         input.placeholder = 'Loading...';
                         input.disabled = true;
                     }
+                    const receiptInput = document.getElementById('settingReceiptLwTargetId');
+                    if (receiptInput) {
+                        receiptInput.value = '';
+                        receiptInput.placeholder = 'Loading...';
+                        receiptInput.disabled = true;
+                    }
                     if (pocCheck) {
                         pocCheck.disabled = true;
                     }
@@ -1139,6 +1173,21 @@
                         updateSettingsSaveButtonState();
                         showToast("LineWorks通知先IDの取得に失敗しました: " + e.message, true);
                     }).getLwTargetId();
+
+                    // Load Receipt Target ID
+                    google.script.run.withSuccessHandler(id => {
+                        if (receiptInput) {
+                            receiptInput.value = id || '';
+                            receiptInput.placeholder = '';
+                            receiptInput.disabled = false;
+                        }
+                    }).withFailureHandler(e => {
+                        if (receiptInput) {
+                            receiptInput.value = '';
+                            receiptInput.placeholder = '取得失敗';
+                            receiptInput.disabled = true;
+                        }
+                    }).getLwReceiptTargetId();
 
                     // Load PoC Mode Config
                     google.script.run.withSuccessHandler(isPoc => {
@@ -1206,6 +1255,7 @@
                     }
 
                     const newId = (document.getElementById('settingLwTargetId').value || '').trim();
+                    const receiptId = (document.getElementById('settingReceiptLwTargetId').value || '').trim();
                     const pocCheck = document.getElementById('settingPocMode');
                     const isPoc = pocCheck ? pocCheck.checked : false;
 
@@ -1231,24 +1281,34 @@
                             return;
                         }
 
-                        // 2. Save PoC Config
-                        google.script.run.withSuccessHandler(res2 => {
-                            btn.dataset.saving = '0';
-                            btn.disabled = false;
-                            btn.textContent = originalText;
+                        // 1.5 Save Receipt LineWorks ID
+                        google.script.run.withSuccessHandler(res1_5 => {
 
-                            showToast("設定を保存しました");
-                            closeSettings();
+                            // 2. Save PoC Config
+                            google.script.run.withSuccessHandler(res2 => {
+                                btn.dataset.saving = '0';
+                                btn.disabled = false;
+                                btn.textContent = originalText;
 
-                            // Reload Data to apply Anonymization changes
-                            loadData(true);
+                                showToast("設定を保存しました");
+                                closeSettings();
+
+                                // Reload Data to apply Anonymization changes
+                                loadData(true);
+
+                            }).withFailureHandler(e => {
+                                btn.dataset.saving = '0';
+                                btn.disabled = false;
+                                btn.textContent = originalText;
+                                showToast("PoC設定保存エラー: " + e.message, true);
+                            }).savePocConfig(isPoc);
 
                         }).withFailureHandler(e => {
                             btn.dataset.saving = '0';
                             btn.disabled = false;
                             btn.textContent = originalText;
-                            showToast("PoC設定保存エラー: " + e.message, true);
-                        }).savePocConfig(isPoc);
+                            showToast("領収書通知先ID保存エラー: " + e.message, true);
+                        }).saveLwReceiptTargetId(receiptId, currentStaffName || "Admin");
 
                     }).withFailureHandler(e => {
                         btn.dataset.saving = '0';
@@ -2031,6 +2091,13 @@
                 document.getElementById('modalCustomerName').textContent = customer.name;
                 document.getElementById('modalCustomerAddress').textContent = customer.address;
 
+                // Ensure modal parts are visible in case previously hidden by Standalone mode
+                document.getElementById('modalTabs').classList.remove('hidden');
+                document.getElementById('modalDateSection').classList.remove('hidden');
+                document.getElementById('modalTimeSection').classList.remove('hidden');
+                document.getElementById('modalInputSection').classList.remove('hidden');
+                document.getElementById('generateBtn').classList.remove('hidden');
+
                 // Populate Family Selector
                 const famSelect = document.getElementById('familySelector');
                 famSelect.innerHTML = '<option value="">(選択してください)</option>';
@@ -2805,11 +2872,7 @@
             }
 
             function uploadReceiptsOnly() {
-                if (!currentCustomer) {
-                    showToast('顧客を選択してください', true);
-                    return;
-                }
-                if (currentReportMode !== 'daily') {
+                if (currentCustomer && currentReportMode !== 'daily') {
                     showToast('領収書アップロードは日報タブで実行してください', true);
                     return;
                 }
@@ -2825,6 +2888,9 @@
                 const receiptTimestamp = buildReceiptTimestamp();
                 const localKeyMap = loadReceiptLocalKeyMap();
                 const localDuplicates = [];
+                const reqCustomerId = currentCustomer ? currentCustomer.id : '';
+                const reqCustomerName = currentCustomer ? currentCustomer.name : '';
+                const handoffText = document.getElementById('receiptHandoff') ? document.getElementById('receiptHandoff').value.trim() : "";
 
                 currentImages.forEach((img, idx) => {
                     const normalizedAmount = normalizeReceiptAmountClient(img.amount || '');
@@ -2832,12 +2898,12 @@
                     const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
                     if (!canCheckDuplicate) return;
 
-                    const key = buildReceiptLocalDupKey(receiptTimestamp, currentCustomer.id, normalizedAmount, normalizedStore);
+                    const key = buildReceiptLocalDupKey(receiptTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
                     if (localKeyMap[key]) {
                         localDuplicates.push({
                             index: idx,
                             timestamp: receiptTimestamp,
-                            customerName: currentCustomer.name,
+                            customerName: reqCustomerName,
                             amount: normalizedAmount,
                             storeName: normalizedStore
                         });
@@ -2877,10 +2943,12 @@
                         const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
                         if (!canCheckDuplicate) return;
 
-                        const key = buildReceiptLocalDupKey(receiptTimestamp, currentCustomer.id, normalizedAmount, normalizedStore);
+                        const key = buildReceiptLocalDupKey(receiptTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
                         latestMap[key] = Date.now();
                     });
                     saveReceiptLocalKeyMap(latestMap);
+
+                    document.getElementById('receiptHandoff').value = ''; // clear handoff after success
 
                     const duplicateIndexes = new Set((res.duplicates || []).map(d => d.index));
                     if (duplicateIndexes.size > 0) {
@@ -2898,11 +2966,80 @@
                     showToast('Error: ' + e.message, true);
                 }).uploadReceiptsOnly({
                     staffName: currentStaffName,
-                    customerId: currentCustomer.id,
-                    customerName: currentCustomer.name,
+                    customerId: reqCustomerId,
+                    customerName: reqCustomerName,
                     receiptTimestamp: receiptTimestamp,
-                    images: payloadImages
+                    images: payloadImages,
+                    handoffText: handoffText
                 });
+            }
+
+            function openStandaloneReceiptModal() {
+                currentCustomer = null;
+                document.getElementById('modalCustomerName').textContent = '共通（顧客指定なし）';
+                document.getElementById('modalCustomerAddress').textContent = '各種経費の領収書を登録します';
+
+                // Hide parts
+                const safeAddHidden = (id) => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); };
+                safeAddHidden('modalTabs');
+                safeAddHidden('familySelectorContainer');
+                safeAddHidden('modalDateSection');
+                safeAddHidden('modalTimeSection');
+                safeAddHidden('modalInputSection');
+                safeAddHidden('generateBtn');
+                safeAddHidden('assessmentSection');
+
+                // Ensure image section is visible
+                const imageSection = document.getElementById('imageUploadSection');
+                if (imageSection) imageSection.classList.remove('hidden');
+
+                document.getElementById('receiptHandoff').value = '';
+                currentImages = [];
+                renderImagePreviews();
+                hideReceiptDuplicateWarning();
+
+                const modal = document.getElementById('reportModal');
+                const modalContent = modal.querySelector('div');
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    modalContent.classList.remove('translate-y-full');
+                }, 10);
+            }
+
+            function sendVisitComplete() {
+                if (!currentCustomer) {
+                    showToast('顧客を選択してください', true);
+                    return;
+                }
+                const btn = document.getElementById('visitCompleteBtn');
+                btn.disabled = true;
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '送信中...';
+
+                const y = reportTargetDate.getFullYear();
+                const m = (reportTargetDate.getMonth() + 1).toString().padStart(2, '0');
+                const d = reportTargetDate.getDate().toString().padStart(2, '0');
+                const dateStr = `${y}/${m}/${d}`;
+                const start = `${document.getElementById('startHour').value}:${document.getElementById('startMinute').value}`;
+                const end = `${document.getElementById('endHour').value}:${document.getElementById('endMinute').value}`;
+
+                const visitTime = `${start}〜${end}`;
+                const message = `【訪問完了】\n担当: ${currentStaffName}\n顧客名: ${currentCustomer.name}\n訪問日時: ${dateStr} ${visitTime}`;
+
+                google.script.run.withSuccessHandler((res) => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    if (res && res.success) {
+                        showToast('訪問完了の通知を送信しました');
+                    } else {
+                        showToast('通知の送信に失敗しました', true);
+                    }
+                }).withFailureHandler(e => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    showToast('Error: ' + e.message, true);
+                }).sendVisitCompleteNotification(message);
             }
 
             // Image Handling

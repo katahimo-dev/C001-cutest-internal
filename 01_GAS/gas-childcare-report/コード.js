@@ -786,7 +786,7 @@ ${reportData.internalText}`;
  * Saves receipt images to Drive and logs to Spreadsheet
  * Updated to handle Amount, CustomerID, CustomerName, StoreName and Timestamp from report
  */
-function processReceiptImages(imagesData, staffId, customerId, customerName, reportTimestamp) {
+function processReceiptImages(imagesData, staffId, customerId, customerName, reportTimestamp, handoffText) {
     if (!imagesData || imagesData.length === 0) {
         return { uploadedCount: 0, duplicates: [] };
     }
@@ -795,9 +795,9 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
     const ss = SpreadsheetApp.openById(IMAGE_LOG_SS_ID);
     const sheet = ss.getSheets()[0];
     // Ensure header matches new requirements
-    // New: ['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク']
+    // New: ['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク', '申し送り']
     if (sheet.getLastRow() === 0) {
-        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク']);
+        sheet.appendRow(['日時', 'ユーザーID', '顧客ID', '顧客名', '金額', '名称', 'Googleドライブ写真ファイルへのリンク', '申し送り']);
     }
 
     // Use the timestamp from the report instead of current time
@@ -874,8 +874,13 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
         const file = folder.createFile(blob);
         const fileUrl = file.getUrl();
 
+        let rowHandoff = '';
+        if (successCount === 0) {
+            rowHandoff = handoffText || '';
+        }
+
         // Append to Spreadsheet with new columns
-        sheet.appendRow([timestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl]);
+        sheet.appendRow([timestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl, rowHandoff]);
         if (canCheckDuplicate) {
             existingKeys.add(duplicateKey);
         }
@@ -906,7 +911,8 @@ function uploadReceiptsOnly(uploadData) {
             uploadData.staffName || '',
             uploadData.customerId || '',
             uploadData.customerName || '',
-            receiptTimestamp
+            receiptTimestamp,
+            uploadData.handoffText || ''
         );
 
         const duplicateCount = result.duplicates.length;
@@ -918,6 +924,28 @@ function uploadReceiptsOnly(uploadData) {
         }
 
         logToBuffer("INFO", "UploadReceiptsOnly", uploadData.staffName || "unknown", `Customer=${uploadData.customerName || ''}, Uploaded=${uploadedCount}, Duplicates=${duplicateCount}`);
+
+        if (uploadedCount > 0) {
+            const customerStr = uploadData.customerName ? `顧客名: ${uploadData.customerName}\n` : ``;
+            const dateStr = receiptTimestamp ? receiptTimestamp.split(' ')[0] : '';
+            
+            let receiptDetails = '';
+            const duplicateIndices = new Set(result.duplicates.map(d => d.index));
+            if (uploadData.images) {
+                uploadData.images.forEach((img, idx) => {
+                    if (!duplicateIndices.has(idx)) {
+                        const amountStr = img.amount ? `${img.amount}円` : '未入力';
+                        const storeStr = img.storeName ? img.storeName : '未入力';
+                        receiptDetails += `\n名称: ${storeStr} / 金額: ${amountStr}`;
+                    }
+                });
+            }
+            
+            const handoffStr = (uploadData.handoffText && uploadData.handoffText.trim()) ? `\n\n申し送り:\n${uploadData.handoffText.trim()}` : '';
+            
+            const lwMsg = `【領収書登録】\n担当: ${uploadData.staffName || '不明'}\n${customerStr}日付: ${dateStr}${receiptDetails}${handoffStr}`;
+            sendReceiptNotificationToLineWorks(lwMsg);
+        }
 
         return {
             success: true,
@@ -931,6 +959,15 @@ function uploadReceiptsOnly(uploadData) {
         return { success: false, message: "領収書アップロードでエラーが発生しました: " + e.message };
     } finally {
         lock.releaseLock();
+    }
+}
+
+function sendVisitCompleteNotification(message) {
+    try {
+        sendToLineWorks(message);
+        return { success: true };
+    } catch (e) {
+        return { success: false, message: e.message };
     }
 }
 

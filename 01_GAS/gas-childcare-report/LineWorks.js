@@ -10,7 +10,8 @@ const LW_PROPS = {
     PRIVATE_KEY: 'LW_PRIVATE_KEY', // PEM format
     BOT_ID: 'LW_BOT_ID',
     DOMAIN_ID: 'LW_DOMAIN_ID',
-    TARGET_ID: 'LW_TARGET_ID' // New property for Channel or User ID
+    TARGET_ID: 'LW_TARGET_ID', // New property for Channel or User ID
+    RECEIPT_TARGET_ID: 'LW_RECEIPT_TARGET_ID'
 };
 
 const DEFAULT_TARGET_ID = 'cu.45082@cutestjapan';
@@ -48,6 +49,53 @@ function saveLwTargetId(newId, updatedBy) {
     PropertiesService.getScriptProperties().setProperty(LW_PROPS.TARGET_ID, trimmedId);
     logToBuffer("SECURITY", "LineWorksTargetIdChanged", user, `Changed LineWorks Target ID from "${previousId}" to "${trimmedId}"`);
     return { success: true, message: "通知先IDを保存しました" };
+}
+
+function getLwReceiptTargetId() {
+    const props = PropertiesService.getScriptProperties();
+    return props.getProperty(LW_PROPS.RECEIPT_TARGET_ID) || '';
+}
+
+function saveLwReceiptTargetId(newId, updatedBy) {
+    const user = (updatedBy && String(updatedBy).trim()) ? String(updatedBy).trim() : "Admin";
+    const trimmedId = String(newId || "").trim();
+    PropertiesService.getScriptProperties().setProperty(LW_PROPS.RECEIPT_TARGET_ID, trimmedId);
+    logToBuffer("SECURITY", "LineWorksReceiptTargetIdChanged", user, `Changed LineWorks Receipt Target ID to "${trimmedId}"`);
+    return { success: true, message: "領収書通知先IDを保存しました" };
+}
+
+function sendReceiptNotificationToLineWorks(text) {
+    try {
+        const token = getLwAccessToken();
+        if (!token) return;
+
+        const targetId = getLwReceiptTargetId();
+        if (!targetId) return;
+
+        const props = PropertiesService.getScriptProperties();
+        const botId = props.getProperty(LW_PROPS.BOT_ID);
+        if (!botId) return;
+
+        let targetType = 'channels';
+        if (targetId.includes('@')) {
+            targetType = 'users';
+        }
+
+        const url = `https://www.worksapis.com/v1.0/bots/${botId}/${targetType}/${targetId}/messages`;
+        const payload = { content: { type: "text", text: text } };
+        const options = {
+            method: 'post',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+        };
+        UrlFetchApp.fetch(url, options);
+    } catch (e) {
+        console.error("LineWorks Receipt Error: " + e.message);
+    }
 }
 
 /**
