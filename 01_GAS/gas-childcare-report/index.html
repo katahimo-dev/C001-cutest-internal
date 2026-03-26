@@ -2811,6 +2811,36 @@
                 ].join('||');
             }
 
+            // OCR/シート返却 "yyyy/MM/dd HH:mm" → datetime-local入力用 "yyyy-MM-ddTHH:mm"
+            function toDatetimeLocalFormat(dateStr) {
+                if (!dateStr) return '';
+                // 柔軟にパース
+                const m = dateStr.trim().match(/^(\d{4})\/(\d{2})\/(\d{2})(?:\s(\d{1,2}):(\d{1,2}))?$/);
+                if (m) {
+                    const hh = (m[4] || '00').toString().padStart(2, '0');
+                    const mm = (m[5] || '00').toString().padStart(2, '0');
+                    return `${m[1]}-${m[2]}-${m[3]}T${hh}:${mm}`;
+                }
+                return '';
+            }
+
+            // datetime-local値 "yyyy-MM-ddTHH:mm" → サーバー送信用 "yyyy/MM/dd HH:mm"
+            function fromDatetimeLocalFormat(val) {
+                if (!val) return '';
+                return val.replace(/-/g, '/').replace('T', ' ');
+            }
+
+            // タイムスタンプを現在の日時（分単位）で生成
+            function getNowDatetimeLocal() {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                const d = String(now.getDate()).padStart(2, '0');
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                return `${y}-${m}-${d}T${hh}:${mm}`;
+            }
+
             function getReceiptLocalStorageBucket() {
                 const userKey = normalizeReceiptTextClient(currentStaffName || 'unknown');
                 return `${RECEIPT_LOCAL_KEY_PREFIX}${userKey}`;
@@ -2885,7 +2915,8 @@
                     return;
                 }
 
-                const receiptTimestamp = buildReceiptTimestamp();
+                // 各画像の領収書日時を使ってdup keyを構築。未設定時はバッチフォールバック。
+                const fallbackTimestamp = buildReceiptTimestamp();
                 const localKeyMap = loadReceiptLocalKeyMap();
                 const localDuplicates = [];
                 const reqCustomerId = currentCustomer ? currentCustomer.id : '';
@@ -2898,11 +2929,12 @@
                     const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
                     if (!canCheckDuplicate) return;
 
-                    const key = buildReceiptLocalDupKey(receiptTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
+                    const imgTimestamp = fromDatetimeLocalFormat(img.receiptDate || '') || fallbackTimestamp;
+                    const key = buildReceiptLocalDupKey(imgTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
                     if (localKeyMap[key]) {
                         localDuplicates.push({
                             index: idx,
-                            timestamp: receiptTimestamp,
+                            timestamp: imgTimestamp,
                             customerName: reqCustomerName,
                             amount: normalizedAmount,
                             storeName: normalizedStore
@@ -2921,10 +2953,12 @@
                 btn.disabled = true;
                 btn.textContent = 'アップロード中...';
 
+                // 各画像のreceiptDateをサーバー送信用フォーマットに変換して含める
                 const payloadImages = currentImages.map(i => ({
                     data: i.data,
                     amount: i.amount,
-                    storeName: i.storeName
+                    storeName: i.storeName,
+                    receiptDate: fromDatetimeLocalFormat(i.receiptDate || '')
                 }));
 
                 google.script.run.withSuccessHandler(res => {
@@ -2942,8 +2976,9 @@
                         const normalizedStore = normalizeReceiptTextClient(img.storeName || '');
                         const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
                         if (!canCheckDuplicate) return;
-
-                        const key = buildReceiptLocalDupKey(receiptTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
+                        // サーバーと同じキー（per-image receiptDate使用）
+                        const imgTimestamp = img.receiptDate || fallbackTimestamp;
+                        const key = buildReceiptLocalDupKey(imgTimestamp, reqCustomerId, normalizedAmount, normalizedStore);
                         latestMap[key] = Date.now();
                     });
                     saveReceiptLocalKeyMap(latestMap);
@@ -2968,7 +3003,7 @@
                     staffName: currentStaffName,
                     customerId: reqCustomerId,
                     customerName: reqCustomerName,
-                    receiptTimestamp: receiptTimestamp,
+                    receiptTimestamp: fallbackTimestamp,
                     images: payloadImages,
                     handoffText: handoffText
                 });
@@ -3111,7 +3146,7 @@
 
                     // Add to list with empty amount, storeName and loading state
                     const newIdx = currentImages.length;
-                    currentImages.push({ data: dataUrl, amount: '', storeName: '', loading: true });
+                    currentImages.push({ data: dataUrl, amount: '', storeName: '', receiptDate: '', loading: true });
                     renderImagePreviews();
 
                     // Trigger OCR
@@ -3126,18 +3161,20 @@
                 google.script.run.withSuccessHandler(res => {
                     if (currentImages[index]) {
                         currentImages[index].loading = false;
-                        if (res.amount) {
-                            currentImages[index].amount = res.amount;
-                        }
-                        if (res.storeName) {
-                            currentImages[index].storeName = res.storeName;
-                        }
+                        if (res.amount) currentImages[index].amount = res.amount;
+                        if (res.storeName) currentImages[index].storeName = res.storeName;
+                        // 領収書日時：OCR取得成功時は変換(2015/02/12 18:16)、失敗時は現在の日時をデフォルト
+                        const ocrDate = res.receiptDate ? toDatetimeLocalFormat(res.receiptDate) : '';
+                        currentImages[index].receiptDate = ocrDate || getNowDatetimeLocal();
                         renderImagePreviews();
                     }
                 }).withFailureHandler(e => {
                     console.error("OCR Failed", e);
                     if (currentImages[index]) {
                         currentImages[index].loading = false;
+                        if (!currentImages[index].receiptDate) {
+                            currentImages[index].receiptDate = getNowDatetimeLocal();
+                        }
                         renderImagePreviews();
                     }
                 }).extractAmountFromImage(base64Data);
@@ -3149,7 +3186,7 @@
 
                 currentImages.forEach((imgObj, idx) => {
                     const div = document.createElement('div');
-                    div.className = 'relative w-32 flex flex-col gap-1 items-center'; // increased width for store name
+                    div.className = 'relative w-40 flex flex-col gap-1 items-center';
 
                     // Image Container
                     const imgDiv = document.createElement('div');
@@ -3161,6 +3198,19 @@
                         &times;
                     </button>
                     ${imgObj.loading ? '<div class="absolute inset-0 bg-black/30 flex items-center justify-center"><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner"></div></div>' : ''}
+                `;
+
+                    // Wrapper for date input (領収書日時：OCR取得 or 手動編集可)
+                    const dateContainer = document.createElement('div');
+                    dateContainer.className = "w-full px-1";
+                    dateContainer.innerHTML = `
+                    <div class="text-[10px] text-blue-600 font-bold text-left pl-1 mb-0.5">領収日時</div>
+                    <input type="datetime-local"
+                        value="${imgObj.receiptDate || ''}"
+                        oninput="currentImages[${idx}].receiptDate = this.value"
+                        title="領収書の日時（OCR自動取得・手動編集可）"
+                        class="w-full p-1 text-[11px] border border-blue-300 rounded text-center focus:ring-1 focus:ring-blue-500 bg-blue-50 font-medium"
+                    >
                 `;
 
                     // Wrapper for amount input
@@ -3189,6 +3239,7 @@
                 `;
 
                     div.appendChild(imgDiv);
+                    div.appendChild(dateContainer);
                     div.appendChild(amountContainer);
                     div.appendChild(storeContainer);
                     container.appendChild(div);

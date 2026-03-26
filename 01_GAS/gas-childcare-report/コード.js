@@ -626,18 +626,21 @@ function generateReportWithWarnings(inputData) {
  */
 function extractAmountFromImage(base64Image) {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!apiKey) return { amount: "", storeName: "" };
+    if (!apiKey) return { amount: "", storeName: "", receiptDate: "" };
 
     const prompt = `
     Analyze the image of this receipt.
     Identify the following information:
     1. Total Amount (Total, 合計, 支払い金額)
-    2. Store Name or Parking Name (レシートの一番上に表示されている店舗名や駐車場名)
-    
-    Return the result in JSON format: {"amount": number, "storeName": "string"}
-    If the amount cannot be read, return {"amount": 0}.
-    If the store name cannot be read, return {"storeName": ""}.
-    Do NOT include currency symbols in the number value.
+    2. Store Name or Parking Name (店舗名や駐車場名など、発行元の名称)
+    3. Date and Time of transaction (取引日時や精算日時).
+       - Look for keywords like "取引日時", "精算時刻", "発行日時", "20XX年XX月XX日".
+       - Format as "yyyy/MM/dd HH:mm".
+       - If time is not found but date is, use "yyyy/MM/dd 00:00".
+       - If not found at all, return "".
+
+    Return the result in JSON format: {"amount": number, "storeName": "string", "receiptDate": "string"}
+    Do NOT include currency symbols or commas in the amount.
     `;
 
     // Removing header "data:image/jpeg;base64,"
@@ -651,7 +654,7 @@ function extractAmountFromImage(base64Image) {
 
     if (result.error) {
         console.error(result.error);
-        return { amount: 0, storeName: "" };
+        return { amount: 0, storeName: "", receiptDate: "" };
     }
     return result;
 }
@@ -816,16 +819,19 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
         return (val === null || val === undefined) ? "" : String(val).trim();
     };
 
-    const buildKey = (ts, cId, amount, storeName) => {
-        return [normalizeText(ts), normalizeText(cId), normalizeAmount(amount), normalizeText(storeName)].join('||');
+    // staffId をキーに含めることで、異なるスタッフが同日・同金額・同店舗名の領収書を登録しても
+    // 互いに重複と判定されないようにする。
+    const buildKey = (ts, sId, cId, amount, storeName) => {
+        return [normalizeText(ts), normalizeText(sId), normalizeText(cId), normalizeAmount(amount), normalizeText(storeName)].join('||');
     };
 
     const existingKeys = new Set();
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
+        // 列: [0]=日時, [1]=ユーザーID(staffId), [2]=顧客ID, [4]=金額, [5]=名称
         const rows = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
         rows.forEach(row => {
-            const key = buildKey(row[0], row[2], row[4], row[5]);
+            const key = buildKey(row[0], row[1], row[2], row[4], row[5]);
             existingKeys.add(key);
         });
     }
@@ -838,6 +844,7 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
         let base64Data = "";
         let amount = "";
         let storeName = "";
+        let receiptDate = ""; // OCRで取得した領収書日時
 
         if (typeof item === 'string') {
             base64Data = item;
@@ -845,17 +852,23 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
             base64Data = item.data;
             amount = item.amount;
             storeName = item.storeName || '';
+            receiptDate = item.receiptDate || '';
         }
 
+        // 領収書日時（OCR取得）を優先。未取得の場合はレポート送信時刻にフォールバック。
+        const itemTimestamp = normalizeText(receiptDate) || timestamp;
         const normalizedAmount = normalizeAmount(amount || '');
         const normalizedStore = normalizeText(storeName || '');
         const canCheckDuplicate = normalizedAmount !== '' && normalizedStore !== '';
-        const duplicateKey = buildKey(timestamp, customerId || '', normalizedAmount, normalizedStore);
-
+        const duplicateKey = buildKey(itemTimestamp, staffId || '', customerId || '', normalizedAmount, normalizedStore);
+        // 同一バッチ内で往復運賃など「同金額・同店舗名」の2枚を登録する場合に備え、
+        // バッチ内ループの既存キー追加にはインデックスを付与して区別する。
+        // シート上の既存データとの照合は staffId+顧客ID+日時+金額+店舗名 の組み合わせで行う。
         if (canCheckDuplicate && existingKeys.has(duplicateKey)) {
             duplicates.push({
                 index: index,
-                timestamp: timestamp,
+                timestamp: itemTimestamp,
+                staffId: staffId || '',
                 customerId: customerId || '',
                 amount: normalizedAmount,
                 storeName: normalizedStore
@@ -880,9 +893,14 @@ function processReceiptImages(imagesData, staffId, customerId, customerName, rep
         }
 
         // Append to Spreadsheet with new columns
-        sheet.appendRow([timestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl, rowHandoff]);
+        // 領収書日時（OCR取得）を日時列に記録。フォールバック時はレポート送信時刻。
+        sheet.appendRow([itemTimestamp, staffId || '', customerId || '', customerName || '', amount || '', storeName || '', fileUrl, rowHandoff]);
         if (canCheckDuplicate) {
-            existingKeys.add(duplicateKey);
+            // 同一バッチ内の次の画像と照合するため追加するが、
+            // 往復運賃など正当な重複は区別できるようインデックスをサフィックスで付与する。
+            // これにより、既にシート上に存在するものと同一キーのものだけをブロックし、
+            // 同バッチ内の同金額・同店舗の別枚数（往復など）は全件登録できる。
+            existingKeys.add(duplicateKey + '||batch_' + index);
         }
         successCount++;
     });

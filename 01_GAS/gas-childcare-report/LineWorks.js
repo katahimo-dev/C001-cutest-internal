@@ -64,7 +64,21 @@ function saveLwReceiptTargetId(newId, updatedBy) {
     return { success: true, message: "領収書通知先IDを保存しました" };
 }
 
+/**
+ * テストモード判定。スクリプトプロパティ TEST_MODE=true のとき true を返す。
+ * GASエディタの「プロジェクトの設定」→「スクリプトプロパティ」で
+ *   キー: TEST_MODE / 値: true  を追加するとすべての通知がスキップされる。
+ * テスト終了後はプロパティを削除すれば自動的に通知が復活する。
+ */
+function isTestMode() {
+    return PropertiesService.getScriptProperties().getProperty('TEST_MODE') === 'true';
+}
+
 function sendReceiptNotificationToLineWorks(text) {
+    if (isTestMode()) {
+        console.log('[TEST_MODE] sendReceiptNotificationToLineWorks skipped. text=' + text.substring(0, 80));
+        return;
+    }
     try {
         const token = getLwAccessToken();
         if (!token) return;
@@ -103,6 +117,10 @@ function sendReceiptNotificationToLineWorks(text) {
  * Currently configured to send to a specific channel/user defined in properties or arguments.
  */
 function sendToLineWorks(text) {
+    if (isTestMode()) {
+        console.log('[TEST_MODE] sendToLineWorks skipped. text=' + text.substring(0, 80));
+        return;
+    }
     try {
         const token = getLwAccessToken();
         if (!token) {
