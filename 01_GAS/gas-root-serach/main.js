@@ -23,7 +23,7 @@ const CONFIG = {
  * 3. 「実行」をクリック 
  */
 function runSpecifiedDate() {
-  main("2026/1/30"); // ここを書き換えるだけでOK
+  main("2026/3/31"); // ここを書き換えるだけでOK
 }
 
 /**

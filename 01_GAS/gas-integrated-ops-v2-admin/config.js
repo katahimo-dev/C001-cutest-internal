@@ -13,10 +13,11 @@ const CONFIG_UNIFIED = {
   YEAR_START_MONTH: 4,         // 会計年度開始月
   
   // ■ スプレッドシート設定
+  CUSTOMER_FOLDER_ID: '1wLjR6iZ447tbUa3ff59bejoM5aXh8clC', // 顧客CSV保存フォルダ
   STAFF_SHEET_NAME: 'Staff',   // スタッフマスタ シート名
   STAFF_SHEET_ID: '1exqD69qZqACm9KOUPpa0fVWRYD2qEZfce7I6TOs_VDk', // 既設スタッフマスター
   SUMMARY_SHEET_ID: '(TBD)', // ⚠️ NEW: 月間集約シート（作成後にID変更）
-  ROUTE_FOLDER_ID: '1K2x_z3Tr0qLgpSRVpLn1f8SaBdW25G7q', // ルート集計ファイルを保存するフォルダ
+  ROUTE_FOLDER_ID: '1K2x_z3Tr0qLgpSRVpLn1f8SaBdW25G7q', // 月間集約ファイルの保存先フォルダ
   TEMPLATE_FILE_NAME: '出勤簿テンプレート',
   
   // ■ Google Calendar (カレンダー同期用)
@@ -53,6 +54,7 @@ const RUNTIME_CONFIG = {
 // P列: 事務フラグ
 // Q列: 修正者名（管理者が最終確定時に記入）
 // R列: 修正日時
+// S-AG列: 勤怠計算用の補助列（予約URL・移動/出退勤経路情報）
 
 const SUMMARY_SHEET_COLUMNS = {
   DATE: 'A',
@@ -83,6 +85,23 @@ const SUMMARY_SHEET_COLUMNS = {
   IS_ADMIN_WORK: 'P',     // 事務作業フラグ
   CONFIRMED_BY: 'Q',      // 管理者名
   CONFIRMED_AT: 'R',      // 確定日時
+
+  // 勤怠計算用の補助列
+  VISIT_1_RESERVA_URL: 'S',
+  VISIT_1_ATTENDANCE_URL: 'T',
+  VISIT_1_ATTENDANCE_MIN: 'U',
+  VISIT_1_ATTENDANCE_KM: 'V',
+  VISIT_2_RESERVA_URL: 'W',
+  VISIT_2_MOVE_URL: 'X',
+  VISIT_2_MOVE_MIN: 'Y',
+  VISIT_2_MOVE_KM: 'Z',
+  VISIT_3_RESERVA_URL: 'AA',
+  VISIT_3_MOVE_URL: 'AB',
+  VISIT_3_MOVE_MIN: 'AC',
+  VISIT_3_MOVE_KM: 'AD',
+  LEAVING_URL: 'AE',
+  LEAVING_MIN: 'AF',
+  LEAVING_KM: 'AG',
 };
 
 // ==========================================
@@ -137,11 +156,13 @@ function getSummarySpreadsheetId() {
   const props = PropertiesService.getScriptProperties();
   const runtimeId = props.getProperty(RUNTIME_CONFIG.SUMMARY_SHEET_ID_PROP);
   if (runtimeId && runtimeId !== '') {
+    ensureFileInTargetFolder_(runtimeId);
     return runtimeId;
   }
 
   if (CONFIG_UNIFIED.SUMMARY_SHEET_ID && CONFIG_UNIFIED.SUMMARY_SHEET_ID !== '(TBD)') {
     props.setProperty(RUNTIME_CONFIG.SUMMARY_SHEET_ID_PROP, CONFIG_UNIFIED.SUMMARY_SHEET_ID);
+    ensureFileInTargetFolder_(CONFIG_UNIFIED.SUMMARY_SHEET_ID);
     return CONFIG_UNIFIED.SUMMARY_SHEET_ID;
   }
 
@@ -149,17 +170,42 @@ function getSummarySpreadsheetId() {
   const newId = ss.getId();
   props.setProperty(RUNTIME_CONFIG.SUMMARY_SHEET_ID_PROP, newId);
 
-  // 可能なら指定フォルダへ移動（失敗しても処理は継続）
-  try {
-    const file = DriveApp.getFileById(newId);
-    const folder = DriveApp.getFolderById(CONFIG_UNIFIED.ROUTE_FOLDER_ID);
-    folder.addFile(file);
-    DriveApp.getRootFolder().removeFile(file);
-  } catch (e) {
-    console.warn('Summary spreadsheet move skipped:', e.message);
-  }
+  ensureFileInTargetFolder_(newId);
 
   return newId;
+}
+
+/**
+ * 対象ファイルを設定フォルダへ配置する。
+ * すでに配置済みなら何もしない。
+ * @param {string} fileId
+ */
+function ensureFileInTargetFolder_(fileId) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const targetFolder = DriveApp.getFolderById(CONFIG_UNIFIED.ROUTE_FOLDER_ID);
+
+    // 既存親フォルダにターゲットが含まれているか判定
+    let alreadyInTarget = false;
+    const parents = file.getParents();
+    while (parents.hasNext()) {
+      if (parents.next().getId() === targetFolder.getId()) {
+        alreadyInTarget = true;
+        break;
+      }
+    }
+
+    if (!alreadyInTarget) {
+      targetFolder.addFile(file);
+      try {
+        DriveApp.getRootFolder().removeFile(file);
+      } catch (eRoot) {
+        console.warn('Root folder detach skipped:', eRoot.message);
+      }
+    }
+  } catch (e) {
+    console.warn('ensureFileInTargetFolder_ skipped:', e.message);
+  }
 }
 
 /**
@@ -172,6 +218,16 @@ function getOrCreateSummarySpreadsheet() {
 }
 
 /**
+ * 現在利用中の月間集約スプレッドシートURLをログ表示する。
+ */
+function showSummarySpreadsheetInfo() {
+  const id = getSummarySpreadsheetId();
+  const url = 'https://docs.google.com/spreadsheets/d/' + id;
+  console.log('Summary Spreadsheet ID: ' + id);
+  console.log('Summary Spreadsheet URL: ' + url);
+}
+
+/**
  * 月シートを取得。存在しない場合はヘッダー付きで作成する。
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  * @param {string} sheetName
@@ -179,18 +235,48 @@ function getOrCreateSummarySpreadsheet() {
  */
 function getOrCreateMonthSheet(ss, sheetName) {
   let sheet = ss.getSheetByName(sheetName);
-  if (sheet) return sheet;
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
 
-  sheet = ss.insertSheet(sheetName);
-  sheet.getRange('A1:R1').setValues([[
+  ensureMonthSheetStructure_(sheet);
+  return sheet;
+}
+
+/**
+ * 月シートのヘッダーと列数を現行定義へ揃える。
+ * 既存データは保持し、足りない列だけ右側へ追加する。
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureMonthSheetStructure_(sheet) {
+  const headers = getMonthSheetHeaderValues_();
+  const requiredColumns = headers.length;
+  const currentMaxColumns = sheet.getMaxColumns();
+
+  if (currentMaxColumns < requiredColumns) {
+    sheet.insertColumnsAfter(currentMaxColumns, requiredColumns - currentMaxColumns);
+  }
+
+  sheet.getRange(1, 1, 1, requiredColumns).setValues([headers]);
+}
+
+/**
+ * 月間集約シートのヘッダー定義を返す。
+ * @returns {string[]}
+ */
+function getMonthSheetHeaderValues_() {
+  return [
     '日付', 'スタッフ名',
     '訪問先1', '開始1', '終了1',
     '訪問先2', '開始2', '終了2',
     '訪問先3', '開始3', '終了3',
     '作業内容', '作業開始', '作業終了',
-    '天候', '事務フラグ', '確定者', '確定日時'
-  ]]);
-  return sheet;
+    '天候', '事務フラグ', '確定者', '確定日時',
+    '予約詳細URL1', '出勤経路URL1', '出勤時間1', '出勤距離1',
+    '予約詳細URL2', '移動経路URL2', '移動時間2', '移動距離2',
+    '予約詳細URL3', '移動経路URL3', '移動時間3', '移動距離3',
+    '退勤経路URL', '退勤時間', '退勤距離'
+  ];
 }
 
 /**
@@ -276,4 +362,75 @@ function isSameValue(oldVal, newVal) {
     if (formattedOld === sNew) return true;
   }
   return false;
+}
+
+/**
+ * スタッフマップを取得（同期処理用）
+ * Staff シートから、メール → スタッフ情報のマップを作成
+ * 退職済み(H列に日付あり)は除外
+ * 
+ * @returns {Object} { normalizedName -> { name, email, id, lwId, isAdmin } }
+ */
+function getAuthorizedStaffMapForSync() {
+  try {
+    const staffSheetId = CONFIG_UNIFIED.STAFF_SHEET_ID;
+    if (!staffSheetId || staffSheetId === '(TBD)') {
+      throw new Error('STAFF_SHEET_ID が未設定です');
+    }
+
+    const ss = SpreadsheetApp.openById(staffSheetId);
+    const sheet = ss.getSheetByName(CONFIG_UNIFIED.STAFF_SHEET_NAME);
+    if (!sheet) {
+      throw new Error(`シート「${CONFIG_UNIFIED.STAFF_SHEET_NAME}」が見つかりません`);
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return {};
+
+    // Staff マスター（A〜L）
+    // A:ID, B:氏名, C:住所, D:TEL, E:mail address, F:緯度経度
+    // G:入社日, H:退職日, I:ユーザーID, J:PW, K:管理者, L:LW_ID
+    const data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    const map = {};
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const id = row[0];          // A列
+      const name = row[1];        // B列
+      const address = row[2] || ''; // C列
+      const email = row[4];       // E列
+      const latLng = row[5] || ''; // F列
+      const retiredDate = row[7]; // H列
+      const isAdmin = row[10];    // K列
+      const lwId = row[11];       // L列
+
+      let lat = '';
+      let lng = '';
+      if (typeof latLng === 'string' && latLng.includes(',')) {
+        const parts = latLng.split(',');
+        lat = parseFloat(String(parts[0]).trim()) || '';
+        lng = parseFloat(String(parts[1]).trim()) || '';
+      }
+
+      // アクティブなスタッフのみ（退職日が未設定）
+      if (name && name !== '' && email && email !== '' && (!retiredDate || retiredDate === '')) {
+        const normalizedName = String(name).trim();
+        map[normalizedName] = {
+          id: id || '',
+          name: normalizedName,
+          address: address,
+          lat: lat,
+          lng: lng,
+          email: String(email).trim(),
+          lwId: lwId || '',
+          isAdmin: isAdmin || ''
+        };
+      }
+    }
+
+    return map;
+  } catch (e) {
+    console.error('[getAuthorizedStaffMapForSync] error:', e.message);
+    throw e;
+  }
 }
