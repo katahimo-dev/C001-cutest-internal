@@ -5,6 +5,8 @@ const CONFIG = {
   CUSTOMER_FOLDER_ID: "1wLjR6iZ447tbUa3ff59bejoM5aXh8clC", 
   STAFF_SS_ID: "1exqD69qZqACm9KOUPpa0fVWRYD2qEZfce7I6TOs_VDk",
   ROUTE_SUMMARY_FILE_NAME: "ルート集計", // 保存用ファイル名
+  ATTENDANCE_FILE_NAME: "勤怠集計", // 勤怠転記用ファイル名
+  ATTENDANCE_FOLDER_ID: "1FA2aSBddgBakETEbzJhJIx1vWG06P46J", // 勤怠集計保存先（gas-childcare-daily-report と共通）
   REPORT_APP_URL: "https://script.google.com/macros/s/AKfycbwmef1CgKJNhqjJXr-ZqkRWx4_-OJ8pjzdzBdRC8iOZ8_v5TXrIEWv01xFlCKGaurs/exec", // 日報アプリURL
   // LINE WORKS設定
   LW: {
@@ -52,37 +54,111 @@ function main(date) {
 
   console.log("実行対象日:", Utilities.formatDate(targetDate, "JST", "yyyy-MM-dd"));
 
-  const y = targetDate.getFullYear();
-  const m = ('0' + (targetDate.getMonth() + 1)).slice(-2);
-  const d = ('0' + targetDate.getDate()).slice(-2);
-  const dateStr = `${y}-${m}-${d}`; 
-  const sheetName = `${y}${m}`;    
-
-  console.log(`処理対象日: ${dateStr} / シート名: ${sheetName}`);
-
-  const folder = DriveApp.getFolderById(CONFIG.CUSTOMER_FOLDER_ID);
-  const customerData = getCustomerDataFromCsv(folder);
-  const staffData = getStaffDataFromSpreadsheet(CONFIG.STAFF_SS_ID);  
-
-  // 1. 予定取得（通常予約と[イベント]の両方）
-  const calendarEvents = getCalendarEvents(targetDate, customerData);
-  
-  if (calendarEvents.length === 0) {
+  const dailyData = buildDailyRouteRows(targetDate);
+  if (!dailyData.hasEvents) {
     console.log("予定がありません。終了します。");
     return;
   }
 
-  // 2. グループ化（招待ゲストとの照合ロジックを含む）
-  const groupedEvents = groupEventsByStaff(calendarEvents, staffData);
-
-  // 3. ルート計算
-  const outputRows = calculateDetailedRoutes(groupedEvents, dateStr, targetDate);
-
   // 4. ルート集計へ出力
-  outputToSheetAppend(outputRows, sheetName);
+  outputToSheetAppend(dailyData.outputRows, dailyData.sheetName);
 
   // 5. LW送信
   sendDailyScheduleToLineWorks(targetDate);
+}
+
+/**
+ * 勤怠集計用データを保存する（通知なし）
+ * @param {Date} targetDate 処理対象日
+ * @param {Array} [preloadedCustomerData] - 事前読み込み済み顧客データ（省略時は都度読み込み）
+ * @param {Array} [preloadedStaffData] - 事前読み込み済みスタッフデータ（省略時は都度読み込み）
+ */
+function saveAttendanceData(targetDate, preloadedCustomerData, preloadedStaffData) {
+  if (!(targetDate instanceof Date) || isNaN(targetDate.getTime())) {
+    throw new Error("saveAttendanceData: 無効な日付です。");
+  }
+
+  const dailyData = buildDailyRouteRows(targetDate, preloadedCustomerData, preloadedStaffData);
+  console.log(`勤怠集計作成: ${dailyData.dateStr} / ${dailyData.sheetName}`);
+
+  if (!dailyData.hasEvents) {
+    // 予定ゼロ日でも既存データを更新できるよう、当日データ削除のみ実施
+    outputToAttendanceFile([], dailyData.sheetName, dailyData.dateStr);
+    console.log("予定がありません。勤怠集計の当日データ削除のみ実施しました。");
+    return;
+  }
+
+  outputToAttendanceFile(dailyData.outputRows, dailyData.sheetName, dailyData.dateStr);
+}
+
+/**
+ * 1日分のルート計算用データを作成する
+ * @param {Date} targetDate 処理対象日
+ * @param {Array} [preloadedCustomerData] - 事前読み込み済み顧客データ（省略時は都度読み込み）
+ * @param {Array} [preloadedStaffData] - 事前読み込み済みスタッフデータ（省略時は都度読み込み）
+ */
+function buildDailyRouteRows(targetDate, preloadedCustomerData, preloadedStaffData) {
+  const y = targetDate.getFullYear();
+  const m = ('0' + (targetDate.getMonth() + 1)).slice(-2);
+  const d = ('0' + targetDate.getDate()).slice(-2);
+  const dateStr = `${y}-${m}-${d}`;
+  const sheetName = `${y}${m}`;
+
+  console.log(`処理対象日: ${dateStr} / シート名: ${sheetName}`);
+
+  const folder = DriveApp.getFolderById(CONFIG.CUSTOMER_FOLDER_ID);
+  const customerData = preloadedCustomerData || getCustomerDataFromCsv(folder);
+  const staffData = preloadedStaffData || getStaffDataFromSpreadsheet(CONFIG.STAFF_SS_ID);
+  const calendarEvents = getCalendarEvents(targetDate, customerData);
+
+  if (calendarEvents.length === 0) {
+    return { dateStr, sheetName, hasEvents: false, outputRows: [] };
+  }
+
+  const groupedEvents = groupEventsByStaff(calendarEvents, staffData);
+  const outputRows = calculateDetailedRoutes(groupedEvents, dateStr, targetDate);
+
+  return { dateStr, sheetName, hasEvents: true, outputRows };
+}
+
+/**
+ * 勤怠集計保存を夕方実行するトリガー用関数（当日分を更新）
+ */
+function autoRunSaveAttendance() {
+  const targetDate = new Date();
+  targetDate.setHours(0, 0, 0, 0);
+  saveAttendanceData(targetDate);
+}
+
+/**
+ * デバッグ用: 2026年3月を一括作成（ルート計算が多いとタイムアウトする場合あり）
+ */
+function debugSaveAttendanceMarch2026() {
+  const start = new Date("2026/03/01");
+  const end = new Date("2026/03/31");
+  saveAttendanceDataInRange(start, end);
+}
+
+/**
+ * デバッグ用: 2026年3月を一括作成（ルート計算が多いとタイムアウトする場合あり）
+ */
+function debugSaveAttendanceApril2026() {
+  saveAttendanceDataInRange(new Date("2026/04/01"), new Date("2026/04/13"));
+}
+
+function saveAttendanceDataInRange(startDate, endDate) {
+  // CSV・スタッフデータは一度だけ読み込み、各日に使い回す
+  const folder = DriveApp.getFolderById(CONFIG.CUSTOMER_FOLDER_ID);
+  const customerData = getCustomerDataFromCsv(folder);
+  const staffData = getStaffDataFromSpreadsheet(CONFIG.STAFF_SS_ID);
+  console.log(`データ読み込み完了。期間: ${Utilities.formatDate(startDate, 'JST', 'yyyy-MM-dd')} ～ ${Utilities.formatDate(endDate, 'JST', 'yyyy-MM-dd')}`);
+
+  const cursor = new Date(startDate.getTime());
+  while (cursor <= endDate) {
+    const current = new Date(cursor.getTime());
+    saveAttendanceData(current, customerData, staffData);
+    cursor.setDate(cursor.getDate() + 1);
+  }
 }
 
 // ==========================================
@@ -223,22 +299,25 @@ function getCalendarEvents(date, customerList) {
           parkingarea: ""
         },
         guestNames: guestNames,
+        ownerName: ownerName,
         reservaUrl: "",
         isMeeting: true
       });
     }
     // --- パターンD: [事務] ---  
     else if (isOfficeWork) {
-      // 事務作業は移動計算に含めないため、住所や座標は空のまま
+      // locationがあれば住所・座標を取得
+      let geo = location ? getLatLngFromAddress(location) : { lat: "", lng: "" };
+      
       processedEvents.push({
         startTime: event.getStartTime(),
         endTime: event.getEndTime(),
         eventType: "OFFICE WORK", // 種別を区別
         customerInfo: {
           name: cleanedSubjectName,
-          address: "",
-          lat: "",
-          lng: "",
+          address: location || "",
+          lat: geo.lat,
+          lng: geo.lng,
           parkingarea: ""
         },
         staffNameRaw: ownerName, 
@@ -276,12 +355,20 @@ function groupEventsByStaff(events, staffList) {
   events.forEach(event => {
     if (event.isMeeting) {
       // [イベント] の場合：招待ゲスト全員とスタッフ名簿を照合
-      event.guestNames.forEach(guestName => {
-        const staff = staffList.find(s => normalize(s.name) === normalize(guestName));
+      // 招待者がいない場合はカレンダー所有者でフォールバック
+      if (event.guestNames && event.guestNames.length > 0) {
+        event.guestNames.forEach(guestName => {
+          const staff = staffList.find(s => normalize(s.name) === normalize(guestName));
+          if (staff) {
+            addEventToGroup(staffGroups, staff, event);
+          }
+        });
+      } else if (event.ownerName) {
+        const staff = staffList.find(s => normalize(s.name) === normalize(event.ownerName));
         if (staff) {
           addEventToGroup(staffGroups, staff, event);
         }
-      });
+      }
     } else {
       // 通常予約の場合
       const staff = staffList.find(s => normalize(s.name) === normalize(event.staffNameRaw));
@@ -353,6 +440,27 @@ function calculateDetailedRoutes(groupedEvents, dateStr, targetDate) {
         // 有効な予定リストの中で、自分が「最後」なら退勤計算
         if (currentApp === validLocApps[validLocApps.length - 1]) {
           leavingInfo = getRouteDetails(currentApp.customerInfo, staff, targetDate);
+        }
+      } else {
+        // 場所がない場合（事務など）
+        // 直前の時系列予定を遡って場所あり予定を探す
+        let moveFromLocation = null;
+        for (let j = i - 1; j >= 0; j--) {
+          const prevApp = apps[j];
+          const prevHasLocation = prevApp.customerInfo && (
+            (prevApp.customerInfo.lat && prevApp.customerInfo.lng) || 
+            (prevApp.customerInfo.address && prevApp.customerInfo.address.trim() !== "")
+          );
+          if (prevHasLocation) {
+            moveFromLocation = prevApp.customerInfo;
+            break;
+          }
+        }
+        
+        // 場所あり予定が見つかった場合、そこから移動距離を計算
+        // 当該予定が location を持つ場合のみ
+        if (moveFromLocation && currentApp.customerInfo && currentApp.customerInfo.address) {
+          moveInfo = getRouteDetails(moveFromLocation, currentApp.customerInfo, targetDate);
         }
       }
 
@@ -616,10 +724,64 @@ function outputToSheetAppend(rows, sheetName) {
   }
 }
 
+function outputToAttendanceFile(rows, sheetName, dateStr) {
+  const ss = getOrCreateSpreadsheetInFolder(CONFIG.ATTENDANCE_FOLDER_ID, CONFIG.ATTENDANCE_FILE_NAME);
+  let sheet = ss.getSheetByName(sheetName);
+  const header = [
+    "日付", "スタッフ名", "種別", "顧客名", "開始時間", "終了時間", "予約詳細URL",
+    "移動経路URL", "移動時間（分）", "移動距離（km）",
+    "出勤経路URL", "出勤経路時間（分）", "出勤経路距離（km）",
+    "退勤経路URL", "退勤経路時間（分）", "退勤経路距離（km）",
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(header);
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const dateValues = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+    const dateSlash = dateStr.replace(/-/g, '/');
+
+    for (let i = dateValues.length - 1; i >= 0; i--) {
+      const rowDate = (dateValues[i][0] || "").toString();
+      if (rowDate.indexOf(dateStr) !== -1 || rowDate.indexOf(dateSlash) !== -1) {
+        sheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  if (rows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
+  }
+}
+
 function getOrCreateSpreadsheetInSameFolder(fileName) {
   const files = DriveApp.getFilesByName(fileName);
   if (files.hasNext()) return SpreadsheetApp.open(files.next());
   return SpreadsheetApp.create(fileName);
+}
+
+function getOrCreateSpreadsheetInFolder(folderId, fileName) {
+  const folder = DriveApp.getFolderById(folderId);
+  const files = folder.getFilesByName(fileName);
+  if (files.hasNext()) {
+    return SpreadsheetApp.open(files.next());
+  }
+
+  const ss = SpreadsheetApp.create(fileName);
+  const file = DriveApp.getFileById(ss.getId());
+  folder.addFile(file);
+
+  try {
+    DriveApp.getRootFolder().removeFile(file);
+  } catch (e) {
+    // 共有ドライブ等で削除不可の場合は無視
+    console.warn("作成ファイルのマイドライブ除去をスキップしました: " + e.message);
+  }
+
+  return ss;
 }
 
 
@@ -635,4 +797,48 @@ function formatTimeValue(val) {
     return val.substring(0, 5);
   }
   return val;
+}
+
+function debugDumpAllCalendarsForDate(dateStr) {
+  const targetDate = new Date(dateStr);
+  if (isNaN(targetDate.getTime())) {
+    console.error("無効な日付です:", dateStr);
+    return;
+  }
+  const startTime = new Date(targetDate);
+  startTime.setHours(0,0,0,0);
+  const endTime = new Date(startTime);
+  endTime.setHours(23,59,59,999);
+
+  const calendars = CalendarApp.getAllCalendars();
+  console.log(`--- カレンダーダンプ ${dateStr} 開始 ---`);
+  calendars.forEach(cal => {
+    const cname = cal.getName();
+    const events = cal.getEvents(startTime, endTime);
+    console.log(`Calendar: ${cname} / id: ${cal.getId()} / events: ${events.length}`);
+    events.forEach(ev => {
+      const sid = ev.getId();
+      const title = ev.getTitle();
+      const desc = ev.getDescription() || "";
+      const loc = ev.getLocation() || "";
+      const startS = Utilities.formatDate(ev.getStartTime(), "JST", "yyyy-MM-dd HH:mm:ss");
+      const endS = Utilities.formatDate(ev.getEndTime(), "JST", "yyyy-MM-dd HH:mm:ss");
+      const guests = ev.getGuestList().map(g => g.getName() || g.getEmail()).join(", ");
+      console.log(`  --- Event ---`);
+      console.log(`  id: ${sid}`);
+      console.log(`  title: ${title}`);
+      console.log(`  start: ${startS}`);
+      console.log(`  end: ${endS}`);
+      console.log(`  location: ${loc}`);
+      console.log(`  description: ${desc}`);
+      console.log(`  guests: ${guests}`);
+      console.log(`  myStatus: ${ev.getMyStatus()}`);
+    });
+  });
+  console.log(`--- カレンダーダンプ ${dateStr} 終了 ---`);
+}
+
+function runDebug_20260313() {
+  //saveAttendanceData(new Date("2026/03/13"));
+  debugDumpAllCalendarsForDate("2026/03/13");
 }
