@@ -29,7 +29,30 @@
 ### 作業時間 2.5h
 
 
-## [Ver. 1.0.2] - 2026-04-14
+## [Ver. 1.0.2] - 2026-04-16
+
+### ご要望（2026-04-16 追加）
+- カレンダーから取得した訪問予定をスタッフの出勤簿ファイルへ直接反映したい。
+- ルート情報（移動時間・移動距離・出勤/退勤距離）も出勤簿へ含めたい。
+- 事務作業の内容説明を選択肢ではなく、カレンダーから自動取得した任意の文字列に対応したい。
+
+### 追加機能（2026-04-16）
+- 出勤簿行データ生成関数を追加。
+  - `buildTimesheetRowDataFromAppointments_()`: appointments 配列から出勤簿フォーム用 rowData を生成
+- 勤務時間計算ヘルパーを追加。
+  - `calcDurationMinForAttendance_()`: 訪問開始〜終了時刻から勤務時間（分）を計算
+- 事務作業判定ヘルパーを追加。
+  - `isOfficeWorkAppointment_()`: 15分イベントを事務作業として判定
+
+### 改善・変更（2026-04-16）
+- `refreshAttendanceForStaffOnDate()` を拡張し、ライブラリの戻り値として出勤簿行データ（rowData）と appointments を返すように変更。
+  - 呼び出し側（Web アプリ）でカレンダー取得と出勤簿ファイルの直接更新が容易に。
+
+### 技術的な修正（2026-04-16）
+- `refreshAttendanceForStaffOnDate()` にて、`buildTimesheetRowDataFromAppointments_()` を呼び出し、visits と officeWorks を分類・マッピング。
+  - 訪問先1・2・3 の情報（顧客名、時刻、距離）を OUTPUT_COLUMNS 準拠の行データに集約。
+- ルート計算結果（移動時間、移動距離）を rowData の該当列（H, Q, AG, AH, AI, AJ, etc.）に含める。
+- 事務作業判定ロジック内で 15分イベント以外の短時間予定（例：時間未定）も考慮可能な拡張性を確保。
 
 ### 不具合修正
 

@@ -1,5 +1,22 @@
 # 更新履歴 (Release Notes)
 
+## [Ver. 1.0.2] - 2026-04-16
+
+### 追加機能
+- 期間指定で複数日分を一括転記する関数を追加。
+  - `runTransferForRange(startDate, endDate)`（内部処理で `processTransfer` を日毎に呼出し）
+  - UIから期間指定で実行する `runAttendanceTransferRangeInteractive()` をメニューに追加。
+
+### 改善・変更
+- 再転記処理の利便性向上（期間単位でのまとめ実行が可能に）。
+- メニューに「出勤簿ファイルへ転記（期間指定）」を追加。
+
+### 技術的な修正
+- `transfer.js` に日付整形ヘルパー `formatYMD` と期間実行ロジックを追加。
+
+### 作業時間 0.5h
+
+
 ## [Ver. 1.0.1] - 2026-04-13
 
 ### ご要望
