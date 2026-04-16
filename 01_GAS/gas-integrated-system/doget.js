@@ -6,6 +6,13 @@ var YEAR_START_MONTH = 4; // 会計年度開始月（4月始まり）
 var YEAR_OVERRIDE = ''; // 例: '2026' を入れると固定年度で動作
 var YEAR = YEAR_OVERRIDE || String(getCurrentFiscalYear_());
 var STAFF_SHEET_NAME = 'Staff'; // タブ名
+var ADMIN_EMAILS = [
+  // 管理者ユーザーのメールアドレスを必要に応じて追加してください
+  // 例: 'admin@example.com'
+'erikadoula.2525mama@gmail.com',
+'cutestmaster0@gmail.com',
+'ohru131@gmail.com'
+];
 
 function getCurrentFiscalYear_(baseDate) {
   var d = baseDate || new Date();
@@ -19,21 +26,27 @@ function getCurrentFiscalYear_(baseDate) {
 // ==========================================
 var INPUT_COLUMNS = {
   // ■1件目
-  'C': {type: 'text', label: '#1訪問先等', readonly: true}, // 保護列（書き込みなし）
+  'C': {type: 'text', label: '#1訪問先等'},
   'D': {type: 'time', label: '#1始業時刻'},
   'E': {type: 'time', label: '#1終業時刻'},
+  'AI': {type: 'number', label: '#1出勤距離'},
   'I': {type: 'text', label: '天候'},
   
   // ■2件目
-  'L': {type: 'text', label: '#2訪問先等', readonly: true}, // 保護列（書き込みなし）
+  'H': {type: 'number', label: '#1→#2移動時間'},
+  'L': {type: 'text', label: '#2訪問先等'},
   'M': {type: 'time', label: '#2始業時刻'},
   'N': {type: 'time', label: '#2終業時刻'},
+  'AG': {type: 'number', label: '#1→#2移動距離'},
   'R': {type: 'text', label: '天候'},
   
   // ■3件目
-  'U': {type: 'text', label: '#3訪問先等', readonly: true}, // 保護列（書き込みなし）
+  'Q': {type: 'number', label: '#2→#3移動時間'},
+  'U': {type: 'text', label: '#3訪問先等'},
   'V': {type: 'time', label: '#3始業時刻'},
-  'W': {type: 'time', label: '#3終業時刻'}, 
+  'W': {type: 'time', label: '#3終業時刻'},
+  'AH': {type: 'number', label: '#2→#3移動距離'},
+  'AJ': {type: 'number', label: '退勤距離'},
   
   // ■作業記録
   'X': {type: 'text', label: '作業１'},
@@ -98,21 +111,95 @@ function getAuthorizedStaffMap() {
   return map;
 }
 
+function normalizeEmail_(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isAdminEmail_(email) {
+  var normalized = normalizeEmail_(email);
+  for (var i = 0; i < ADMIN_EMAILS.length; i++) {
+    if (normalizeEmail_(ADMIN_EMAILS[i]) === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getActiveStaffNames_(staffMap) {
+  var names = [];
+  var seen = {};
+  for (var email in staffMap) {
+    var name = staffMap[email];
+    if (name && !seen[name]) {
+      names.push(name);
+      seen[name] = true;
+    }
+  }
+  names.sort();
+  return names;
+}
+
+function getStaffNameByEmail_(staffMap, email) {
+  var normalized = normalizeEmail_(email);
+  for (var key in staffMap) {
+    if (normalizeEmail_(key) === normalized) {
+      return staffMap[key];
+    }
+  }
+  return '';
+}
+
+function getAccessContext_(requestedStaffName) {
+  var email = String(Session.getActiveUser().getEmail() || '').trim();
+  var staffMap = getAuthorizedStaffMap();
+  var selfStaffName = getStaffNameByEmail_(staffMap, email);
+  var isAdmin = isAdminEmail_(email);
+
+  if (!selfStaffName && !isAdmin) {
+    throw new Error('あなたのメールアドレス (' + email + ') はスタッフ登録されていません。');
+  }
+
+  var staffNames = getActiveStaffNames_(staffMap);
+  if (staffNames.length === 0) {
+    throw new Error('有効なスタッフ情報が見つかりません。');
+  }
+
+  var targetStaffName = selfStaffName;
+  var requested = String(requestedStaffName || '').trim();
+
+  if (isAdmin) {
+    if (requested !== '') {
+      if (staffNames.indexOf(requested) === -1) {
+        throw new Error('指定スタッフが有効一覧に存在しません: ' + requested);
+      }
+      targetStaffName = requested;
+    } else {
+      targetStaffName = selfStaffName || staffNames[0];
+    }
+  }
+
+  if (!targetStaffName) {
+    throw new Error('対象スタッフを特定できませんでした。');
+  }
+
+  return {
+    email: email,
+    isAdmin: isAdmin,
+    selfStaffName: selfStaffName || '',
+    targetStaffName: targetStaffName,
+    staffNames: staffNames
+  };
+}
+
 // ==========================================
 // 3. データ取得処理
 // ==========================================
 
 function getInitialData() {
   try {
-    var email = Session.getActiveUser().getEmail();
-    var staffMap = getAuthorizedStaffMap();
-    var staffName = staffMap[email];
-    
-    if (!staffName) {
-      throw new Error('あなたのメールアドレス (' + email + ') はスタッフ登録されていません。');
-    }
+    var context = getAccessContext_('');
 
-    var spreadsheet = findSpreadsheetGlobal(staffName, YEAR);
+    var spreadsheet = findSpreadsheetGlobal(context.targetStaffName, YEAR);
     var sheet = spreadsheet.getSheets()[0]; 
 
     // シートから選択肢を読み取る関数
@@ -135,11 +222,12 @@ function getInitialData() {
 
     return {
       success: true,
-      userName: staffName,
+      userName: context.selfStaffName || context.targetStaffName,
+      isAdmin: context.isAdmin,
+      targetStaffName: context.targetStaffName,
+      staffNames: context.staffNames,
       optionsI: getOptions('I'),
       optionsR: getOptions('R'),
-      optionsX: getOptions('X'),
-      optionsAA: getOptions('AA'),
       // ★追加：買物代行の選択肢（ここで数字を自由に設定してください）
       // 必要に応じて ['100', '200', '300'] や ['あり', 'なし'] などに変えてください
       optionsAN: ['1', '2', '3', '4', '5']
@@ -149,61 +237,144 @@ function getInitialData() {
   }
 }
 
-function getDataByDate(dateString) {
+function getDataByDate(dateString, targetStaffName) {
   try {
-    var email = Session.getActiveUser().getEmail();
-    var staffMap = getAuthorizedStaffMap();
-    var staffName = staffMap[email];
-
-    if (!staffName) throw new Error('スタッフ登録が確認できません。');
+    var context = getAccessContext_(targetStaffName);
+    var staffName = context.targetStaffName;
 
     var spreadsheet = findSpreadsheetGlobal(staffName, YEAR);
-    
-    var sheets = spreadsheet.getSheets();
-    var targetSheetName = null;
-    var targetRow = -1;
-    
-    var searchDate = new Date(dateString.replace(/-/g, '/')); 
-    
-    for (var s = 0; s < sheets.length; s++) {
-      var sheet = sheets[s];
-      var lastRow = sheet.getLastRow();
-      if (lastRow < 1) continue; 
+    var target = findTargetRow_(spreadsheet, dateString);
 
-      var dateValues = sheet.getRange(1, 1, lastRow, 1).getValues();
-      for (var i = 0; i < dateValues.length; i++) {
-        var val = dateValues[i][0];
-        if (!val) continue;
-        if (isSameDate(val, searchDate)) {
-          targetSheetName = sheet.getName();
-          targetRow = i + 1;
-          break; 
-        }
-      }
-      if (targetRow !== -1) break; 
-    }
-
-    if (targetRow === -1) {
+    if (target.rowNumber === -1) {
       throw new Error('指定された日付 (' + dateString + ') の行が見つかりませんでした。');
     }
 
-    PropertiesService.getUserProperties().setProperty('LAST_SHEET_NAME', targetSheetName);
+    PropertiesService.getUserProperties().setProperty('LAST_SHEET_NAME_' + staffName, target.sheet.getName());
 
-    var targetSheet = spreadsheet.getSheetByName(targetSheetName);
-    var rowData = {};
-    for (var colChar in INPUT_COLUMNS) {
-      var colNum = columnToNumber(colChar);
-      var val = targetSheet.getRange(targetRow, colNum).getValue();
-      if (val instanceof Date) {
-        val = Utilities.formatDate(val, 'Asia/Tokyo', 'HH:mm');
-      }
-      rowData[colChar] = val;
-    }
-
-    return { success: true, rowData: rowData, rowNumber: targetRow };
+    return {
+      success: true,
+      rowData: readRowData_(target.sheet, target.rowNumber),
+      rowNumber: target.rowNumber,
+      targetStaffName: staffName,
+      isAdmin: context.isAdmin
+    };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+function findTargetRow_(spreadsheet, dateString) {
+  var sheets = spreadsheet.getSheets();
+  var searchDate = new Date(dateString.replace(/-/g, '/'));
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 1) continue;
+
+    var dateValues = sheet.getRange(1, 1, lastRow, 1).getValues();
+    for (var i = 0; i < dateValues.length; i++) {
+      var val = dateValues[i][0];
+      if (!val) continue;
+      if (isSameDate(val, searchDate)) {
+        return {
+          sheet: sheet,
+          rowNumber: i + 1
+        };
+      }
+    }
+  }
+
+  return {
+    sheet: null,
+    rowNumber: -1
+  };
+}
+
+function readRowData_(sheet, rowNumber) {
+  var rowData = {};
+  for (var colChar in INPUT_COLUMNS) {
+    var colNum = columnToNumber(colChar);
+    var val = sheet.getRange(rowNumber, colNum).getValue();
+    if (val instanceof Date) {
+      val = Utilities.formatDate(val, 'Asia/Tokyo', 'HH:mm');
+    }
+    rowData[colChar] = val;
+  }
+  return rowData;
+}
+
+function writeRowData_(sheet, rowNumber, rowData, markChanged) {
+  for (var colChar in rowData) {
+    var colNum = columnToNumber(colChar);
+    var cell = sheet.getRange(rowNumber, colNum);
+    cell.setValue(rowData[colChar]);
+    if (markChanged) {
+      cell.setBackground('#fce4e4');
+    }
+  }
+}
+
+function syncCalendarToTimesheet(dateString, targetStaffName) {
+  try {
+    var context = getAccessContext_(targetStaffName);
+    var staffName = context.targetStaffName;
+    var dateStr = String(dateString || '').trim();
+
+    if (!dateStr) {
+      throw new Error('日付が未指定です。');
+    }
+
+    var spreadsheet = findSpreadsheetGlobal(staffName, YEAR);
+    var target = findTargetRow_(spreadsheet, dateStr);
+    if (target.rowNumber === -1) {
+      throw new Error('指定された日付 (' + dateStr + ') の行が見つかりませんでした。');
+    }
+
+    var lib = getRootSearchLib_();
+    if (!lib) {
+      throw new Error('カレンダー連携ライブラリが見つかりません。');
+    }
+    if (typeof lib.refreshAttendanceForStaffOnDate !== 'function') {
+      throw new Error('ライブラリに refreshAttendanceForStaffOnDate が存在しません。ライブラリバージョンを確認してください。');
+    }
+
+    var result = lib.refreshAttendanceForStaffOnDate(staffName, dateStr);
+    if (!result || result.success !== true) {
+      throw new Error('カレンダー予定の取得に失敗しました。');
+    }
+
+    writeRowData_(target.sheet, target.rowNumber, {
+      C: '', D: '', E: '', AI: '',
+      H: '', L: '', M: '', N: '', AG: '',
+      Q: '', U: '', V: '', W: '', AH: '', AJ: '',
+      X: '', Y: '', Z: '', AA: '', AB: '', AC: ''
+    }, false);
+    writeRowData_(target.sheet, target.rowNumber, result.rowData || {}, false);
+
+    PropertiesService.getUserProperties().setProperty('LAST_SHEET_NAME_' + staffName, target.sheet.getName());
+
+    return {
+      success: true,
+      rowData: readRowData_(target.sheet, target.rowNumber),
+      rowNumber: target.rowNumber,
+      targetStaffName: staffName,
+      isAdmin: context.isAdmin,
+      appointmentCount: (result.appointments || []).length
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function getRootSearchLib_() {
+  if (typeof RootSearchLib !== 'undefined') {
+    return RootSearchLib;
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.RootSearchLib) {
+    return globalThis.RootSearchLib;
+  }
+  return null;
 }
 
 // ==========================================
@@ -218,24 +389,22 @@ function updateData(formObject) {
     var targetDate = new Date(targetDateStr.replace(/-/g, '/'));
     var today = new Date();
     targetDate.setHours(0,0,0,0); today.setHours(0,0,0,0);
-    var limitDate = new Date(today); limitDate.setDate(today.getDate() - 7);
+    var monthStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    if (targetDate < limitDate) {
-      throw new Error('修正期限切れです。\n7日前（' + Utilities.formatDate(limitDate, 'Asia/Tokyo', 'MM/dd') + '）より過去の記録は変更できません。');
+    if (targetDate < monthStartDate) {
+      throw new Error('修正期限切れです。\n当月（' + Utilities.formatDate(monthStartDate, 'Asia/Tokyo', 'MM/dd') + '）より前の記録は変更できません。');
     }
 
     var rowNumber = parseInt(formObject.rowNumber);
     if (!rowNumber) throw new Error('行番号が不明です。');
 
-    var email = Session.getActiveUser().getEmail();
-    var staffMap = getAuthorizedStaffMap();
-    var staffName = staffMap[email];
-
-    if (!staffName) throw new Error('スタッフ登録が確認できません。');
+    var context = getAccessContext_(formObject.targetStaffName);
+    var staffName = context.targetStaffName;
 
     var spreadsheet = findSpreadsheetGlobal(staffName, YEAR);
     
-    var targetSheetName = PropertiesService.getUserProperties().getProperty('LAST_SHEET_NAME');
+    var userProps = PropertiesService.getUserProperties();
+    var targetSheetName = userProps.getProperty('LAST_SHEET_NAME_' + staffName) || userProps.getProperty('LAST_SHEET_NAME');
     var sheet = targetSheetName ? spreadsheet.getSheetByName(targetSheetName) : spreadsheet.getSheets()[0];
 
     // 書き込み制御
@@ -395,3 +564,5 @@ function columnToNumber(column) {
   }
   return result;
 }
+
+

@@ -842,3 +842,284 @@ function runDebug_20260313() {
   //saveAttendanceData(new Date("2026/03/13"));
   debugDumpAllCalendarsForDate("2026/03/13");
 }
+
+function calcDurationMinForAttendance_(startTime, endTime) {
+  if (!startTime || !endTime) return null;
+
+  const toMin = (value) => {
+    const normalized = String(value).substring(0, 5);
+    const parts = normalized.split(':');
+    if (parts.length < 2) return null;
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const s = toMin(startTime);
+  const e = toMin(endTime);
+  if (s === null || e === null) return null;
+
+  if (e >= s) return e - s;
+  return (24 * 60 - s) + e;
+}
+
+function isOfficeWorkAppointment_(appointment) {
+  if (appointment.eventType === 'OFFICE WORK') return true;
+
+  if (appointment.eventType === 'CUSTOMER APPOINTMENT') {
+    return calcDurationMinForAttendance_(appointment.startTime, appointment.endTime) === 15;
+  }
+
+  return false;
+}
+
+function buildTimesheetRowDataFromAppointments_(appointments) {
+  const rowData = {
+    C: '', D: '', E: '',
+    H: '',
+    L: '', M: '', N: '',
+    Q: '',
+    U: '', V: '', W: '',
+    X: '', Y: '', Z: '',
+    AA: '', AB: '', AC: '',
+    AG: '', AH: '', AI: '', AJ: ''
+  };
+
+  const officeWorks = appointments.filter(isOfficeWorkAppointment_);
+  const visits = appointments.filter(app => !isOfficeWorkAppointment_(app));
+
+  if (visits[0]) {
+    rowData.C = visits[0].customerName || '';
+    rowData.D = visits[0].startTime || '';
+    rowData.E = visits[0].endTime || '';
+    rowData.AI = visits[0].attendanceKm || '';
+  }
+
+  if (visits[1]) {
+    rowData.L = visits[1].customerName || '';
+    rowData.M = visits[1].startTime || '';
+    rowData.N = visits[1].endTime || '';
+    rowData.H = visits[1].moveMin || '';
+    rowData.AG = visits[1].moveKm || '';
+  }
+
+  if (visits[2]) {
+    rowData.U = visits[2].customerName || '';
+    rowData.V = visits[2].startTime || '';
+    rowData.W = visits[2].endTime || '';
+    rowData.Q = visits[2].moveMin || '';
+    rowData.AH = visits[2].moveKm || '';
+  }
+
+  if (visits.length > 0) {
+    rowData.AJ = visits[visits.length - 1].leavingKm || '';
+  }
+
+  if (officeWorks[0]) {
+    rowData.X = officeWorks[0].customerName || '';
+    rowData.Y = officeWorks[0].startTime || '';
+    rowData.Z = officeWorks[0].endTime || '';
+  }
+
+  if (officeWorks[1]) {
+    rowData.AA = officeWorks[1].customerName || '';
+    rowData.AB = officeWorks[1].startTime || '';
+    rowData.AC = officeWorks[1].endTime || '';
+  }
+
+  return rowData;
+}
+
+/**
+ * ライブラリ公開用: 指定スタッフ・指定日のカレンダー予定を取得し、ルートを計算して
+ * 勤怠集計シートの該当行を置き換える。置き換えた後のデータを構造化して返す。
+ * @param {string} staffName スタッフ名
+ * @param {string} dateString "YYYY-MM-DD" or "YYYY/MM/DD"
+ */
+function refreshAttendanceForStaffOnDate(staffName, dateString) {
+  const normalizedStaff = String(staffName || "").trim();
+  if (!normalizedStaff) throw new Error("staffName が指定されていません。");
+
+  const targetDate = new Date(String(dateString || "").replace(/-/g, "/"));
+  if (isNaN(targetDate.getTime())) {
+    throw new Error("dateString が不正です。YYYY-MM-DD 形式で指定してください。");
+  }
+  targetDate.setHours(0, 0, 0, 0);
+
+  const y = targetDate.getFullYear();
+  const m = ("0" + (targetDate.getMonth() + 1)).slice(-2);
+  const d = ("0" + targetDate.getDate()).slice(-2);
+  const dateStr = `${y}-${m}-${d}`;
+  const sheetName = `${y}${m}`;
+
+  // データ取得
+  const folder = DriveApp.getFolderById(CONFIG.CUSTOMER_FOLDER_ID);
+  const customerData = getCustomerDataFromCsv(folder);
+  const staffData = getStaffDataFromSpreadsheet(CONFIG.STAFF_SS_ID);
+  const calendarEvents = getCalendarEvents(targetDate, customerData);
+  const groupedEvents = groupEventsByStaff(calendarEvents, staffData);
+
+  const normalize = (str) => String(str || "").replace(/\s+/g, "");
+  const staff = staffData.find(s => normalize(s.name) === normalize(normalizedStaff));
+
+  // ルート計算（該当スタッフのみ）
+  let outputRows = [];
+  if (staff && groupedEvents[staff.id]) {
+    const singleGroup = {};
+    singleGroup[staff.id] = groupedEvents[staff.id];
+    outputRows = calculateDetailedRoutes(singleGroup, dateStr, targetDate);
+  }
+
+  // 勤怠集計シートの該当スタッフ・該当日の行を置き換え
+  const ss = getOrCreateSpreadsheetInFolder(CONFIG.ATTENDANCE_FOLDER_ID, CONFIG.ATTENDANCE_FILE_NAME);
+  let sheet = ss.getSheetByName(sheetName);
+  const header = [
+    "日付", "スタッフ名", "種別", "顧客名", "開始時間", "終了時間", "予約詳細URL",
+    "移動経路URL", "移動時間（分）", "移動距離（km）",
+    "出勤経路URL", "出勤経路時間（分）", "出勤経路距離（km）",
+    "退勤経路URL", "退勤経路時間（分）", "退勤経路距離（km）",
+  ];
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(header);
+  } else {
+    // 該当スタッフ・該当日の既存行を後ろから削除
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const dateStaffVals = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      const targetHyphen = dateStr;
+      const targetSlash = dateStr.replace(/-/g, "/");
+      for (let i = dateStaffVals.length - 1; i >= 0; i--) {
+        const rowDate = String(dateStaffVals[i][0] || "").trim();
+        const rowStaff = normalize(String(dateStaffVals[i][1] || ""));
+        if (rowStaff === normalize(normalizedStaff) &&
+            (rowDate.indexOf(targetHyphen) !== -1 || rowDate.indexOf(targetSlash) !== -1)) {
+          sheet.deleteRow(i + 2);
+        }
+      }
+    }
+  }
+
+  // 新しいデータを追記
+  if (outputRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, outputRows.length, header.length).setValues(outputRows);
+  }
+
+  // 戻り値を構造化
+  const appointments = outputRows.map(row => ({
+    eventType:     row[2],
+    customerName:  row[3],
+    startTime:     String(row[4] || ""),
+    endTime:       String(row[5] || ""),
+    reservaUrl:    row[6],
+    moveUrl:       row[7],
+    moveMin:       row[8],
+    moveKm:        row[9],
+    attendanceUrl: row[10],
+    attendanceMin: row[11],
+    attendanceKm:  row[12],
+    leavingUrl:    row[13],
+    leavingMin:    row[14],
+    leavingKm:     row[15]
+  }));
+
+  const rowData = buildTimesheetRowDataFromAppointments_(appointments);
+
+  return {
+    success: true,
+    date: dateStr,
+    staffName: normalizedStaff,
+    appointments: appointments,
+    rowData: rowData
+  };
+}
+
+/**
+ * ライブラリ公開用: 指定スタッフ・指定日の予定を取得する
+ * @param {string} staffName スタッフ名
+ * @param {string} dateString "YYYY-MM-DD" or "YYYY/MM/DD"
+ */
+function getScheduleForStaffOnDate(staffName, dateString) {
+  const normalizedStaffName = String(staffName || "").trim();
+  if (!normalizedStaffName) {
+    throw new Error("staffName が指定されていません。");
+  }
+
+  const targetDate = new Date(String(dateString || "").replace(/-/g, "/"));
+  if (isNaN(targetDate.getTime())) {
+    throw new Error("dateString が不正です。YYYY-MM-DD 形式で指定してください。");
+  }
+  targetDate.setHours(0, 0, 0, 0);
+
+  const folder = DriveApp.getFolderById(CONFIG.CUSTOMER_FOLDER_ID);
+  const customerData = getCustomerDataFromCsv(folder);
+  const staffData = getStaffDataFromSpreadsheet(CONFIG.STAFF_SS_ID);
+  const calendarEvents = getCalendarEvents(targetDate, customerData);
+  const groupedEvents = groupEventsByStaff(calendarEvents, staffData);
+
+  const normalize = (str) => String(str || "").replace(/\s+/g, "");
+  const staff = staffData.find(s => normalize(s.name) === normalize(normalizedStaffName));
+  if (!staff) {
+    return {
+      success: true,
+      date: Utilities.formatDate(targetDate, "Asia/Tokyo", "yyyy-MM-dd"),
+      staffName: normalizedStaffName,
+      appointments: []
+    };
+  }
+
+  const group = groupedEvents[staff.id];
+  const appointments = group ? group.appointments : [];
+
+  return {
+    success: true,
+    date: Utilities.formatDate(targetDate, "Asia/Tokyo", "yyyy-MM-dd"),
+    staffName: staff.name,
+    appointments: appointments.map(app => ({
+      title: app.customerInfo ? app.customerInfo.name : "",
+      eventType: app.eventType,
+      start: Utilities.formatDate(app.startTime, "Asia/Tokyo", "HH:mm"),
+      end: Utilities.formatDate(app.endTime, "Asia/Tokyo", "HH:mm")
+    }))
+  };
+}
+
+/**
+ * ライブラリ公開用: 出勤簿入力フォーム向けに予定値を整形して返す
+ * @param {string} staffName スタッフ名
+ * @param {string} dateString "YYYY-MM-DD" or "YYYY/MM/DD"
+ */
+function getAttendancePrefillForStaffOnDate(staffName, dateString) {
+  const schedule = getScheduleForStaffOnDate(staffName, dateString);
+  const apps = (schedule.appointments || []).slice(0, 3);
+  const rowData = {
+    C: "", D: "", E: "",
+    L: "", M: "", N: "",
+    U: "", V: "", W: ""
+  };
+
+  if (apps[0]) {
+    rowData.C = apps[0].title || "";
+    rowData.D = apps[0].start || "";
+    rowData.E = apps[0].end || "";
+  }
+  if (apps[1]) {
+    rowData.L = apps[1].title || "";
+    rowData.M = apps[1].start || "";
+    rowData.N = apps[1].end || "";
+  }
+  if (apps[2]) {
+    rowData.U = apps[2].title || "";
+    rowData.V = apps[2].start || "";
+    rowData.W = apps[2].end || "";
+  }
+
+  return {
+    success: true,
+    date: schedule.date,
+    staffName: schedule.staffName,
+    appointments: apps,
+    rowData: rowData
+  };
+}

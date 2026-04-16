@@ -23,6 +23,7 @@ function onOpen() {
 
   ui.createMenu('🟦 出勤簿入力')
     .addItem('出勤簿ファイルへ転記（日付指定）', 'runAttendanceTransfer')
+    .addItem('出勤簿ファイルへ転記（期間指定）', 'runAttendanceTransferRangeInteractive')
     .addItem('【手動】今日の分を今すぐ転記', 'autoRunDailyTransfer')
     .addToUi();
   
@@ -304,6 +305,51 @@ function processTransfer(targetDateStr) {
     msg += "未転記: " + errorStaffs.join(', ');
   }
   return msg;
+}
+
+// ---------------------------------------------
+// 期間指定一括転記: ヘルパーとUIトリガー
+// ---------------------------------------------
+function formatYMD(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function runTransferForRange(startDateStr, endDateStr) {
+  const s = new Date(String(startDateStr).replace(/\//g, '-'));
+  const e = new Date(String(endDateStr).replace(/\//g, '-'));
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) {
+    throw new Error('開始／終了日が不正です');
+  }
+  const results = [];
+  const cur = new Date(s.getTime());
+  while (cur <= e) {
+    const dateStr = formatYMD(cur);
+    try {
+      processTransfer(dateStr);
+      results.push(dateStr + ' → OK');
+    } catch (err) {
+      results.push(dateStr + ' → エラー: ' + err.message);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return results.join('\n');
+}
+
+function runAttendanceTransferRangeInteractive() {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt('期間転記', '開始日と終了日を「YYYY-MM-DD,YYYY-MM-DD」の形式で入力してください\n例: 2026-01-01,2026-01-07', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  const parts = res.getResponseText().split(',');
+  if (parts.length !== 2) { ui.alert('入力形式が不正です'); return; }
+  try {
+    const report = runTransferForRange(parts[0].trim(), parts[1].trim());
+    ui.alert('処理結果', report, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
 }
 
 /**

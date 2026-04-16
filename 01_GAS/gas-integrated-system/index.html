@@ -84,7 +84,7 @@
       .time-wrapper { position: relative; display: flex; width: 100%; }
       .time-wrapper input[type="time"] {
         flex: 1; padding: 12px; border: 2px solid #f1f8e9; border-radius: 12px 0 0 12px; 
-        font-size: 19px; height: 56px; -webkit-appearance: none;
+        font-size: 19px; height: 56px; -webkit-appearance: none; appearance: none;
         border-right: none; color: #4e342e; background-color: #f9fbe7;
       }
       .time-wrapper input:focus { background-color: #fff; border-color: #8bc34a; }
@@ -98,6 +98,19 @@
 
       .date-group { display: flex; gap: 12px; }
       .date-group input { flex: 1; }
+
+      .admin-panel {
+        margin-top: 14px;
+        padding: 12px;
+        border: 2px dashed #f1c40f;
+        border-radius: 12px;
+        background: #fffde7;
+      }
+      .admin-note {
+        margin: 0 0 8px;
+        color: #8d6e63;
+        font-size: 13px;
+      }
       
       .search-btn { 
         background-color: #8bc34a; color: white; border: none; padding: 0 25px; 
@@ -113,6 +126,20 @@
         box-shadow: 0 4px 10px rgba(230, 126, 34, 0.4);
       }
       .save-btn:disabled { background: #e0e0e0; box-shadow: none; color: #999; }
+
+      .calendar-btn {
+        width: 100%;
+        background: linear-gradient(to right, #4caf50, #2e7d32);
+        color: #fff;
+        border: none;
+        padding: 14px;
+        border-radius: 16px;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 14px;
+        box-shadow: 0 3px 8px rgba(46, 125, 50, 0.35);
+      }
+      .calendar-btn:disabled { background: #bdbdbd; box-shadow: none; color: #f5f5f5; }
 
       #loading, #error-msg, #success-msg { display: none; padding: 20px; margin-bottom: 25px; text-align: center; font-weight: bold; border-radius: 15px; font-size: 16px; }
       #error-msg { color: #d32f2f; background: #ffcdd2; border: 2px solid #ef9a9a; }
@@ -157,6 +184,11 @@
           <input type="date" id="target-date" onchange="checkDateLimit()">
           <button class="search-btn" id="search-btn" onclick="searchData()">表示</button>
         </div>
+        <div id="admin-panel" class="admin-panel" style="display:none;">
+          <p class="admin-note">管理者モード: 対象スタッフを選択して表示・修正できます。</p>
+          <label style="margin-top:0;">👤 対象スタッフ</label>
+          <select id="target-staff"></select>
+        </div>
       </div>
       <div id="loading"><div style="font-size:30px; color:#f39c12;">⏳</div><div style="color:#e67e22; font-size:16px;">データを検索中...</div></div>
 
@@ -164,45 +196,54 @@
         <div id="form-area">
           <input type="hidden" name="rowNumber" id="rowNumber">
           <input type="hidden" name="targetDateStr" id="targetDateStr">
+          <input type="hidden" name="targetStaffName" id="targetStaffName">
+
+          <button type="button" class="calendar-btn" id="calendar-sync-btn" onclick="loadCalendarSchedule()">カレンダーから最新予定を取得して反映</button>
 
           <div class="section-box">
             <div class="section-title">業務 #1</div>
             <label>📍 訪問先等 (C列)</label>
-            <input type="text" name="col_C" id="col_C" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            <input type="text" name="col_C" id="col_C" placeholder="訪問先等を入力">
             
             <div class="row-group">
               <div class="col-half"><label>始業 (D列)</label><div class="time-wrapper"><input type="time" name="col_D" id="col_D" step="60"><div class="clock-icon" onclick="openPicker('col_D')">🕒</div></div></div>
               <div class="col-half"><label>終業 (E列)</label><div class="time-wrapper"><input type="time" name="col_E" id="col_E" step="60"><div class="clock-icon" onclick="openPicker('col_E')">🕒</div></div></div>
             </div>
+            <label>🚗 出勤距離 (AI列)</label><input type="number" name="col_AI" id="col_AI" step="0.01" placeholder="距離(km)">
             <label>⛅ 天候 (I列)</label><select name="col_I" id="col_I"><option value="">選択...</option></select>
           </div>
 
           <div class="section-box">
             <div class="section-title">業務 #2</div>
+            <label>🕒 #1→#2移動時間 (H列)</label><input type="number" name="col_H" id="col_H" step="1" placeholder="時間(分)">
             <label>📍 訪問先等 (L列)</label>
-            <input type="text" name="col_L" id="col_L" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            <input type="text" name="col_L" id="col_L" placeholder="訪問先等を入力">
             
             <div class="row-group">
               <div class="col-half"><label>始業 (M列)</label><div class="time-wrapper"><input type="time" name="col_M" id="col_M" step="60"><div class="clock-icon" onclick="openPicker('col_M')">🕒</div></div></div>
               <div class="col-half"><label>終業 (N列)</label><div class="time-wrapper"><input type="time" name="col_N" id="col_N" step="60"><div class="clock-icon" onclick="openPicker('col_N')">🕒</div></div></div>
             </div>
+            <label>🚗 #1→#2移動距離 (AG列)</label><input type="number" name="col_AG" id="col_AG" step="0.01" placeholder="距離(km)">
             <label>⛅ 天候 (R列)</label><select name="col_R" id="col_R"><option value="">選択...</option></select>
           </div>
 
           <div class="section-box">
             <div class="section-title">業務 #3</div>
+            <label>🕒 #2→#3移動時間 (Q列)</label><input type="number" name="col_Q" id="col_Q" step="1" placeholder="時間(分)">
             <label>📍 訪問先等 (U列)</label>
-            <input type="text" name="col_U" id="col_U" placeholder="(管理者設定)" readonly onclick="showReadOnlyMsg()">
+            <input type="text" name="col_U" id="col_U" placeholder="訪問先等を入力">
             
             <div class="row-group">
               <div class="col-half"><label>始業 (V列)</label><div class="time-wrapper"><input type="time" name="col_V" id="col_V" step="60"><div class="clock-icon" onclick="openPicker('col_V')">🕒</div></div></div>
               <div class="col-half"><label>終業 (W列)</label><div class="time-wrapper"><input type="time" name="col_W" id="col_W" step="60"><div class="clock-icon" onclick="openPicker('col_W')">🕒</div></div></div>
             </div>
+            <label>🚗 #2→#3移動距離 (AH列)</label><input type="number" name="col_AH" id="col_AH" step="0.01" placeholder="距離(km)">
+            <label>🏠 退勤距離 (AJ列)</label><input type="number" name="col_AJ" id="col_AJ" step="0.01" placeholder="距離(km)">
           </div>
 
           <div class="section-box">
             <div class="section-title">作業 #1</div>
-            <label>📝 作業内容 (X列)</label><select name="col_X" id="col_X"><option value="">選択...</option></select>
+            <label>📝 作業内容 (X列)</label><input type="text" name="col_X" id="col_X" placeholder="作業内容を入力">
             <div class="row-group">
               <div class="col-half"><label>開始 (Y列)</label><div class="time-wrapper"><input type="time" name="col_Y" id="col_Y" step="60"><div class="clock-icon" onclick="openPicker('col_Y')">🕒</div></div></div>
               <div class="col-half"><label>終了 (Z列)</label><div class="time-wrapper"><input type="time" name="col_Z" id="col_Z" step="60"><div class="clock-icon" onclick="openPicker('col_Z')">🕒</div></div></div>
@@ -211,7 +252,7 @@
 
           <div class="section-box">
             <div class="section-title">作業 #2</div>
-            <label>📝 作業内容 (AA列)</label><select name="col_AA" id="col_AA"><option value="">選択...</option></select>
+            <label>📝 作業内容 (AA列)</label><input type="text" name="col_AA" id="col_AA" placeholder="作業内容を入力">
             <div class="row-group">
               <div class="col-half"><label>開始 (AB列)</label><div class="time-wrapper"><input type="time" name="col_AB" id="col_AB" step="60"><div class="clock-icon" onclick="openPicker('col_AB')">🕒</div></div></div>
               <div class="col-half"><label>終了 (AC列)</label><div class="time-wrapper"><input type="time" name="col_AC" id="col_AC" step="60"><div class="clock-icon" onclick="openPicker('col_AC')">🕒</div></div></div>
@@ -236,6 +277,12 @@
     </div>
 
     <script>
+      var APP_STATE = {
+        isAdmin: false,
+        targetStaffName: '',
+        staffNames: []
+      };
+
       window.onload = function() {
         var today = new Date();
         var yyyy = today.getFullYear();
@@ -248,11 +295,19 @@
         google.script.run
           .withSuccessHandler(function(data) {
             if (data.success) {
-              document.getElementById('user-info').textContent = 'ようこそ ' + data.userName + ' さん';
+              APP_STATE.isAdmin = data.isAdmin === true;
+              APP_STATE.targetStaffName = data.targetStaffName || '';
+              APP_STATE.staffNames = data.staffNames || [];
+
+              var userText = 'ようこそ ' + data.userName + ' さん';
+              if (APP_STATE.isAdmin) {
+                userText += '（管理者）';
+              }
+              document.getElementById('user-info').textContent = userText;
+
+              setupAdminPanel();
               setupDropdown('col_I', data.optionsI);
               setupDropdown('col_R', data.optionsR);
-              setupDropdown('col_X', data.optionsX);
-              setupDropdown('col_AA', data.optionsAA);
             } else {
               showError("初期エラー: " + data.error);
             }
@@ -263,27 +318,52 @@
           .getInitialData();
       };
 
-      function showReadOnlyMsg() {
-        showError("🔒 この項目は管理者側で設定しているため、編集できません。");
-      }
-
       function checkDateLimit() {
         var dateVal = document.getElementById('target-date').value;
         if (!dateVal) return;
         var inputDate = new Date(dateVal.replace(/-/g, '/'));
         var today = new Date();
         inputDate.setHours(0,0,0,0); today.setHours(0,0,0,0);
-        var limitDate = new Date(today); limitDate.setDate(today.getDate() - 7);
+        var monthStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
         var btn = document.getElementById('search-btn');
         var form = document.getElementById('form-area');
-        if (inputDate < limitDate) {
-          showError("⚠️ 修正期限を過ぎています（7日前まで修正可）");
+        if (inputDate < monthStartDate) {
+          showError("⚠️ 修正期限を過ぎています（当月分のみ修正可）");
           btn.disabled = true; form.style.display = 'none';
         } else {
           hideMessages();
           btn.disabled = false;
         }
+      }
+
+      function setupAdminPanel() {
+        var panel = document.getElementById('admin-panel');
+        var select = document.getElementById('target-staff');
+        if (!APP_STATE.isAdmin) {
+          panel.style.display = 'none';
+          return;
+        }
+
+        panel.style.display = 'block';
+        select.innerHTML = '';
+        APP_STATE.staffNames.forEach(function(name) {
+          var option = document.createElement('option');
+          option.value = name;
+          option.text = name;
+          if (name === APP_STATE.targetStaffName) {
+            option.selected = true;
+          }
+          select.appendChild(option);
+        });
+      }
+
+      function getSelectedStaffName() {
+        if (!APP_STATE.isAdmin) {
+          return APP_STATE.targetStaffName;
+        }
+        var select = document.getElementById('target-staff');
+        return select ? select.value : '';
       }
 
       function setupDropdown(id, options) {
@@ -303,14 +383,21 @@
         var btn = document.getElementById('search-btn');
         if (!dateVal || btn.disabled) return;
 
+        var selectedStaffName = getSelectedStaffName();
+        if (!selectedStaffName) {
+          showError("対象スタッフを選択してください。");
+          return;
+        }
+
         showLoading(true); hideMessages();
         document.getElementById('form-area').style.display = 'none';
         document.getElementById('targetDateStr').value = dateVal;
+        document.getElementById('targetStaffName').value = selectedStaffName;
 
         google.script.run
           .withSuccessHandler(displayForm)
           .withFailureHandler(function(e){ showLoading(false); showError(e); })
-          .getDataByDate(dateVal);
+          .getDataByDate(dateVal, selectedStaffName);
       }
 
       function displayForm(result) {
@@ -318,11 +405,14 @@
         if (!result.success) return showError(result.error);
         document.getElementById('form-area').style.display = 'block';
         document.getElementById('rowNumber').value = result.rowNumber;
+        if (result.targetStaffName) {
+          document.getElementById('targetStaffName').value = result.targetStaffName;
+        }
         
         var d = result.rowData;
-        setValue('col_C', d.C); setValue('col_D', d.D); setValue('col_E', d.E); setValue('col_I', d.I);
-        setValue('col_L', d.L); setValue('col_M', d.M); setValue('col_N', d.N); setValue('col_R', d.R);
-        setValue('col_U', d.U); setValue('col_V', d.V); setValue('col_W', d.W);
+        setValue('col_C', d.C); setValue('col_D', d.D); setValue('col_E', d.E); setValue('col_AI', d.AI); setValue('col_I', d.I);
+        setValue('col_H', d.H); setValue('col_L', d.L); setValue('col_M', d.M); setValue('col_N', d.N); setValue('col_AG', d.AG); setValue('col_R', d.R);
+        setValue('col_Q', d.Q); setValue('col_U', d.U); setValue('col_V', d.V); setValue('col_W', d.W); setValue('col_AH', d.AH); setValue('col_AJ', d.AJ);
         setValue('col_X', d.X); setValue('col_Y', d.Y); setValue('col_Z', d.Z);
         setValue('col_AA', d.AA); setValue('col_AB', d.AB); setValue('col_AC', d.AC);
         setValue('col_AN', d.AN);
@@ -348,6 +438,46 @@
             btn.disabled = false; btn.textContent = "修正を保存する"; showError(e);
           })
           .updateData(form);
+      }
+
+      function loadCalendarSchedule() {
+        var dateVal = document.getElementById('target-date').value;
+        var btn = document.getElementById('calendar-sync-btn');
+        
+        if (!dateVal) {
+          showError('先に日付を選択してください。');
+          return;
+        }
+
+        var selectedStaffName = getSelectedStaffName();
+        if (!selectedStaffName) {
+          showError('対象スタッフを選択してください。');
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '読み込み中...';
+        hideMessages();
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            btn.disabled = false;
+            btn.textContent = 'カレンダーから最新予定を取得して反映';
+
+            if (!res.success) {
+              showError(res.error || 'データ取得に失敗しました。');
+              return;
+            }
+
+            displayForm(res);
+            showSuccess('カレンダーから ' + (res.appointmentCount || 0) + ' 件の予定を取得し、出勤簿に反映しました。内容を確認して保存してください。');
+          })
+          .withFailureHandler(function(e) {
+            btn.disabled = false;
+            btn.textContent = 'カレンダーから最新予定を取得して反映';
+            showError('サーバー接続エラー: ' + e);
+          })
+          .syncCalendarToTimesheet(dateVal, selectedStaffName);
       }
 
       function showLoading(b) { document.getElementById('loading').style.display = b ? 'block' : 'none'; }

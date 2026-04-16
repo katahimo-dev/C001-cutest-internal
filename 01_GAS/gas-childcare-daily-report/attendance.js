@@ -77,7 +77,8 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
   
   // テンプレートの保護情報を取得
   const originalTemplateSS = SpreadsheetApp.open(templateFile);
-  const originalTemplateSheet = originalTemplateSS.getSheets()[0]; 
+  const originalTemplateSheet = originalTemplateSS.getSheets()[0];
+  const templateProtectionDefs = getTemplateProtectionSettings_(originalTemplateSheet);
 
   const targetFolderName = fiscalYear + "出勤簿";
   let targetFolder;
@@ -99,6 +100,8 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
   
   const maxCol = Math.max(CONFIG_GEN.COL_RESIGN, targetLinkCol); 
   const staffValues = staffSheet.getRange(CONFIG_GEN.STAFF_START_ROW, 1, lastRow - CONFIG_GEN.STAFF_START_ROW + 1, maxCol).getValues();
+  const existingFilesMap = buildExistingFileMap_(targetFolder);
+  const pendingLinkWrites = new Array(staffValues.length);
 
   let processCount = 0;
   let skipCount = 0;
@@ -124,11 +127,11 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
 
     // --- ①対策：重複チェック ---
     const newFileName = staffName + "_出勤簿_" + fiscalYear + "年度";
-    if (targetFolder.getFilesByName(newFileName).hasNext()) {
+    const existingFile = existingFilesMap[newFileName];
+    if (existingFile) {
       // 既にファイルがある場合はスキップし、リンクだけ念の為更新（または何もしない）
-      const existingFile = targetFolder.getFilesByName(newFileName).next();
       const formula = '=HYPERLINK("' + existingFile.getUrl() + '", "' + staffId + '出勤簿")';
-      staffSheet.getRange(rowIndex, targetLinkCol).setFormula(formula);
+      pendingLinkWrites[i] = formula;
       
       skipCount++;
       continue; // 次の人の処理へ
@@ -154,7 +157,7 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
     }
 
     if (isResigned) {
-      staffSheet.getRange(rowIndex, targetLinkCol).setValue("- (退職済)");
+      pendingLinkWrites[i] = "- (退職済)";
       continue; 
     }
 
@@ -164,30 +167,31 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
     const baseSheet = newSS.getSheets()[0];
     
     const months = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-    months.forEach(month => {
+    for (let m = 0; m < months.length; m++) {
+      let month = months[m];
       let currentYear = (month >= 4) ? fiscalYear : fiscalYear + 1;
       let newSheet = baseSheet.copyTo(newSS);
       newSheet.setName(month + "月");
-      setupAttendanceSheet(newSheet, fiscalYear, currentYear, month, staffId, staffName, originalTemplateSheet);
-    });
+      setupAttendanceSheet(newSheet, fiscalYear, currentYear, month, staffId, staffName, templateProtectionDefs);
+    }
 
     newSS.deleteSheet(baseSheet);
 
     const linkText = staffId + "出勤簿"; 
     const formula = '=HYPERLINK("' + newSS.getUrl() + '", "' + linkText + '")';
-    staffSheet.getRange(rowIndex, targetLinkCol).setFormula(formula);
+    pendingLinkWrites[i] = formula;
+    existingFilesMap[newFileName] = newFile;
     
     processCount++;
   }
 
+  applyPendingLinkWrites_(staffSheet, CONFIG_GEN.STAFF_START_ROW, targetLinkCol, pendingLinkWrites);
+
   return { count: processCount, skipped: skipCount, status: status };
 }
 
-function setupAttendanceSheet(sheet, fiscalYear, currentYear, month, staffId, staffName, templateSheet) {
-  sheet.getRange("A2").setValue(currentYear); 
-  sheet.getRange("B2").setValue(month);       
-  sheet.getRange("C2").setValue(staffId);
-  sheet.getRange("D2").setValue(staffName);
+function setupAttendanceSheet(sheet, fiscalYear, currentYear, month, staffId, staffName, templateProtectionDefs) {
+  sheet.getRange(2, 1, 1, 4).setValues([[currentYear, month, staffId, staffName]]);
 
   const lastDay = new Date(currentYear, month, 0).getDate();
   const weekDays = ["日", "月", "火", "水", "木", "金", "土"];
@@ -203,30 +207,78 @@ function setupAttendanceSheet(sheet, fiscalYear, currentYear, month, staffId, st
   targetRange.setValues(dateValues);
   sheet.getRange(CONFIG_GEN.TEMPLATE_DATA_ROW, 1, dateValues.length, 1).setNumberFormat("d");
 
-  if (templateSheet) {
-    copyProtectionSettings(templateSheet, sheet);
+  if (templateProtectionDefs && templateProtectionDefs.length > 0) {
+    copyProtectionSettings(templateProtectionDefs, sheet);
   }
+}
+
+function buildExistingFileMap_(folder) {
+  const map = {};
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    map[file.getName()] = file;
+  }
+  return map;
+}
+
+function applyPendingLinkWrites_(sheet, startRow, targetCol, pendingWrites) {
+  let chunkStart = -1;
+  let chunkValues = [];
+
+  for (let i = 0; i <= pendingWrites.length; i++) {
+    const val = (i < pendingWrites.length) ? pendingWrites[i] : null;
+    if (val != null) {
+      if (chunkStart === -1) {
+        chunkStart = i;
+      }
+      chunkValues.push([val]);
+    } else if (chunkStart !== -1) {
+      sheet.getRange(startRow + chunkStart, targetCol, chunkValues.length, 1).setValues(chunkValues);
+      chunkStart = -1;
+      chunkValues = [];
+    }
+  }
+}
+
+function getTemplateProtectionSettings_(sourceSheet) {
+  const protections = sourceSheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+  const defs = [];
+
+  for (let i = 0; i < protections.length; i++) {
+    const p = protections[i];
+    const ranges = p.getUnprotectedRanges();
+    const a1Ranges = [];
+    for (let r = 0; r < ranges.length; r++) {
+      a1Ranges.push(ranges[r].getA1Notation());
+    }
+
+    defs.push({
+      description: p.getDescription(),
+      warningOnly: p.isWarningOnly(),
+      unprotectedA1Ranges: a1Ranges
+    });
+  }
+
+  return defs;
 }
 
 /**
  * テンプレートシートの保護設定を確実にコピーする
  */
-function copyProtectionSettings(sourceSheet, targetSheet) {
-  const protections = sourceSheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
-
-  protections.forEach(p => {
+function copyProtectionSettings(templateProtectionDefs, targetSheet) {
+  for (let i = 0; i < templateProtectionDefs.length; i++) {
+    const def = templateProtectionDefs[i];
     // 1. 新しい保護を作成（この時点でデフォルトで「自分のみ」編集可になる）
     const newProtection = targetSheet.protect();
-    newProtection.setDescription(p.getDescription()); 
-    newProtection.setWarningOnly(p.isWarningOnly()); 
+    newProtection.setDescription(def.description); 
+    newProtection.setWarningOnly(def.warningOnly); 
 
     // 2. テンプレートの「編集許可範囲（UnprotectedRanges）」を取得
-    const unprotectedRanges = p.getUnprotectedRanges();
     const newUnprotectedRanges = [];
-    
-    unprotectedRanges.forEach(range => {
-      newUnprotectedRanges.push(targetSheet.getRange(range.getA1Notation()));
-    });
+    for (let j = 0; j < def.unprotectedA1Ranges.length; j++) {
+      newUnprotectedRanges.push(targetSheet.getRange(def.unprotectedA1Ranges[j]));
+    }
     
     // 3. 編集許可範囲をセット
     if (newUnprotectedRanges.length > 0) {
@@ -235,7 +287,7 @@ function copyProtectionSettings(sourceSheet, targetSheet) {
     
     // 4. 重要: 共有ドライブ対策
     // 警告のみの設定でない場合（＝完全に編集不可にしたい場合）、明示的にエディタを削除しようとする
-    if (!p.isWarningOnly()) {
+    if (!def.warningOnly) {
       // オーナー（実行者）のみが編集できるようにする設定
       // ※共有ドライブではremoveEditorsがエラーになることがあるためtry-catchする
       // しかし、protect()した時点で作成者がオーナーになるため、
@@ -253,5 +305,5 @@ function copyProtectionSettings(sourceSheet, targetSheet) {
         console.warn("保護設定: エディタの削除に失敗しましたが保護は適用されました。: " + e.message);
       }
     }
-  });
+  }
 }

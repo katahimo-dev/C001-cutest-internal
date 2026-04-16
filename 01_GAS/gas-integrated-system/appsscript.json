@@ -1,6 +1,15 @@
 {
   "timeZone": "Asia/Tokyo",
-  "dependencies": {},
+  "dependencies": {
+    "libraries": [
+      {
+        "userSymbol": "RootSearchLib",
+        "libraryId": "17tO3P7o_U7fsxWda0QkWCVYbjRtfnlvYlZBBAoSmZ9RO7o1wqX87qfzx",
+        "version": "5",
+        "developmentMode": false
+      }
+    ]
+  },
   "webapp": {
     "executeAs": "USER_ACCESSING",
     "access": "ANYONE"
