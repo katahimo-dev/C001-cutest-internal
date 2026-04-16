@@ -2,8 +2,17 @@
 // 【最終完成版】スマホde出勤簿修正アプリ
 // ==========================================
 
-var YEAR = '2025'; // 年度
+var YEAR_START_MONTH = 4; // 会計年度開始月（4月始まり）
+var YEAR_OVERRIDE = ''; // 例: '2026' を入れると固定年度で動作
+var YEAR = YEAR_OVERRIDE || String(getCurrentFiscalYear_());
 var STAFF_SHEET_NAME = 'Staff'; // タブ名
+
+function getCurrentFiscalYear_(baseDate) {
+  var d = baseDate || new Date();
+  var y = d.getFullYear();
+  var m = d.getMonth() + 1;
+  return (m < YEAR_START_MONTH) ? (y - 1) : y;
+}
 
 // ==========================================
 // ★設定エリア：列の定義

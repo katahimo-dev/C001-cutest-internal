@@ -5,6 +5,7 @@
 const CONFIG_TRANS = {
   FOLDER_ID_INFO: '1FA2aSBddgBakETEbzJhJIx1vWG06P46J', // ルート情報フォルダ
   ROUTE_FILE_NAME: 'ルート集計',
+  ATTENDANCE_FILE_NAME: '勤怠集計',
   
   STAFF_START_ROW: 9,
   COL_NAME: 3,
@@ -54,22 +55,19 @@ function runAttendanceTransfer() {
 }
 
 /**
- * 【トリガー専用】実行日の「翌日(明日)」の日付で自動実行する関数
- * ※夜に実行して、翌日の予定を転記する運用に対応
+ * 【トリガー専用】実行日の「当日」日付で自動実行する関数
+ * ※夜に実行して、当日分を転記する運用
  */
 function autoRunDailyTransfer() {
   const today = new Date();
-  
-  // ★修正: 今日ではなく「明日」の日付を取得する
   const targetDate = new Date(today);
-  targetDate.setDate(today.getDate() + 1); // 1日足す
   
   const year = targetDate.getFullYear();
   const month = ("0" + (targetDate.getMonth() + 1)).slice(-2);
   const day = ("0" + targetDate.getDate()).slice(-2);
   const targetDateStr = `${year}-${month}-${day}`;
   
-  console.log("自動実行(翌日分)を開始します: " + targetDateStr);
+  console.log("自動実行(当日分)を開始します: " + targetDateStr);
   
   try {
     const report = processTransfer(targetDateStr);
@@ -77,6 +75,38 @@ function autoRunDailyTransfer() {
   } catch (e) {
     console.error("エラーが発生しました: " + e.message);
   }
+}
+
+function calcDurationMin(startTime, endTime) {
+  if (!startTime || !endTime) return null;
+
+  const toMin = (value) => {
+    const normalized = String(value).substring(0, 5);
+    const parts = normalized.split(':');
+    if (parts.length < 2) return null;
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const s = toMin(startTime);
+  const e = toMin(endTime);
+  if (s === null || e === null) return null;
+
+  if (e >= s) return e - s;
+  return (24 * 60 - s) + e;
+}
+
+function isOfficeWorkEntry(entry) {
+  if (entry.eventType === 'OFFICE WORK') return true;
+
+  if (entry.eventType === 'CUSTOMER APPOINTMENT') {
+    const duration = calcDurationMin(entry.startTime, entry.endTime);
+    return duration === 15;
+  }
+
+  return false;
 }
 
 
@@ -101,15 +131,15 @@ function processTransfer(targetDateStr) {
   const monthStr = month < 10 ? '0' + month : '' + month;
   const routeSheetName = year + monthStr;
 
-  // --- 1. ルート集計データの読み込み ---
+  // --- 1. 勤怠集計データの読み込み ---
   const infoFolder = DriveApp.getFolderById(CONFIG_TRANS.FOLDER_ID_INFO);
-  const routeFile = findFileByName(infoFolder, CONFIG_TRANS.ROUTE_FILE_NAME);
-  if (!routeFile) throw new Error('「ルート集計」ファイルが見つかりません。');
+  const routeFile = findFileByName(infoFolder, CONFIG_TRANS.ATTENDANCE_FILE_NAME);
+  if (!routeFile) throw new Error('「勤怠集計」ファイルが見つかりません。');
   
   const routeSS = SpreadsheetApp.open(routeFile);
   const routeSheet = routeSS.getSheetByName(routeSheetName);
   if (!routeSheet) {
-    throw new Error('ルート集計ファイルに、対象月のシート「' + routeSheetName + '」が見つかりません。');
+    throw new Error('勤怠集計ファイルに、対象月のシート「' + routeSheetName + '」が見つかりません。');
   }
 
   const routeDisplayValues = routeSheet.getDataRange().getDisplayValues();
@@ -133,6 +163,7 @@ function processTransfer(targetDateStr) {
       if (!dailyData[staffName]) dailyData[staffName] = [];
       
       dailyData[staffName].push({
+        eventType: routeDisplayValues[i][2],
         customer: routeDisplayValues[i][3],
         startTime: routeDisplayValues[i][4],
         endTime: routeDisplayValues[i][5],
@@ -145,7 +176,7 @@ function processTransfer(targetDateStr) {
     }
   }
 
-  if (foundRowCount === 0) return targetDateStr + " のデータはルート集計シート「" + routeSheetName + "」に見つかりませんでした。";
+  if (foundRowCount === 0) return targetDateStr + " のデータは勤怠集計シート「" + routeSheetName + "」に見つかりませんでした。";
 
   // --- 2. 会計年度の計算 ---
   const fiscalYear = (month <= 3) ? year - 1 : year;
@@ -197,7 +228,17 @@ function processTransfer(targetDateStr) {
       }
 
       const targetRow = CONFIG_TRANS.DATA_START_ROW + day - 1;
-      const visits = dailyData[staff];
+      const allEntries = dailyData[staff];
+      const officeWorks = allEntries.filter(isOfficeWorkEntry);
+      const visits = allEntries.filter(v => !isOfficeWorkEntry(v));
+
+      // 再転記時の残存データ防止のため、転記対象列を先にクリア
+      sheet.getRange(targetRow, 3, 1, 3).clearContent();   // C:E
+      sheet.getRange(targetRow, 8).clearContent();          // H
+      sheet.getRange(targetRow, 12, 1, 3).clearContent();   // L:N
+      sheet.getRange(targetRow, 21, 1, 3).clearContent();   // U:W
+      sheet.getRange(targetRow, 24, 1, 6).clearContent();   // X:AC
+      sheet.getRange(targetRow, 33, 1, 4).clearContent();   // AG:AJ
 
       // --- 書き込み処理（修正箇所） ---
       visits.forEach((v, idx) => {
@@ -229,8 +270,22 @@ function processTransfer(targetDateStr) {
         }
       });
 
-      const lastVisit = visits[visits.length - 1];
-      sheet.getRange(targetRow, 36).setValue(lastVisit.returnDist); // AJ
+      if (visits.length > 0) {
+        const lastVisit = visits[visits.length - 1];
+        sheet.getRange(targetRow, 36).setValue(lastVisit.returnDist); // AJ
+      }
+
+      if (officeWorks[0]) {
+        sheet.getRange(targetRow, 24).setValue(officeWorks[0].customer);  // X
+        sheet.getRange(targetRow, 25).setValue(officeWorks[0].startTime); // Y
+        sheet.getRange(targetRow, 26).setValue(officeWorks[0].endTime);   // Z
+      }
+
+      if (officeWorks[1]) {
+        sheet.getRange(targetRow, 27).setValue(officeWorks[1].customer);  // AA
+        sheet.getRange(targetRow, 28).setValue(officeWorks[1].startTime); // AB
+        sheet.getRange(targetRow, 29).setValue(officeWorks[1].endTime);   // AC
+      }
 
       // ★追加点: 転記したシートをアクティブ（開いた状態）にする
       sheet.activate();
@@ -264,8 +319,3 @@ function findFileByName(folder, name) {
   }
   return null;
 }
-
-
-
-
-
