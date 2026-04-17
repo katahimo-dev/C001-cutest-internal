@@ -4,17 +4,41 @@
 
 const CONFIG_GEN = {
   STAFF_START_ROW: 9,      
+  COL_ADMIN: 1,
   COL_ID: 2,               
   COL_NAME: 3,             
-  COL_RESIGN: 5,           
+  COL_EMAIL: 4,            // D列: メールアドレス
+  COL_RESIGN: 6,           
   BASE_YEAR: 2025,         
-  BASE_COL_LINK: 6,        
+  BASE_COL_LINK: 7,        
   TEMPLATE_DATA_ROW: 4,    
   TEMPLATE_FOLDER_NAME: "出勤簿",      
   TEMPLATE_FILE_NAME: "出勤簿テンプレート",
   // ★追加: タイムアウト対策（ミリ秒）。5分（300,000ms）経過したら安全に停止
   TIME_LIMIT_MS: 300000 
 };
+
+
+/**
+ * ワンオフ実行: 2026年度・ID=ohru131@gmail.com 用の出勤簿一括作成を実行します
+ */
+function createStaffAttendanceFilesForOhru1312026() {
+  const ui = SpreadsheetApp.getUi();
+  const startTime = new Date().getTime();
+  try {
+    const result = createStaffAttendanceFiles(2026, 'ohru131@gmail.com', startTime);
+    if (result.noEmailList && result.noEmailList.length > 0) {
+      ui.alert('権限付与/メールアドレスの問題', result.noEmailList.join('\n'), ui.ButtonSet.OK);
+    }
+    if (result.status === 'TIMEOUT') {
+      ui.alert('タイムアウト', '処理はタイムアウトしました。作成数: ' + result.count + ' 件', ui.ButtonSet.OK);
+    } else {
+      ui.alert('完了', '作成数: ' + result.count + ' 件\nスキップ: ' + result.skipped + ' 件', ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+  }
+}
 
 function promptAndCreateFiles() {
   const ui = SpreadsheetApp.getUi();
@@ -98,14 +122,16 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
   const lastRow = staffSheet.getLastRow();
   if (lastRow < CONFIG_GEN.STAFF_START_ROW) return { count: 0, skipped: 0, status: 'COMPLETE' };
   
-  const maxCol = Math.max(CONFIG_GEN.COL_RESIGN, targetLinkCol); 
+  const maxCol = Math.max(CONFIG_GEN.COL_ADMIN, CONFIG_GEN.COL_EMAIL, CONFIG_GEN.COL_RESIGN, targetLinkCol); 
   const staffValues = staffSheet.getRange(CONFIG_GEN.STAFF_START_ROW, 1, lastRow - CONFIG_GEN.STAFF_START_ROW + 1, maxCol).getValues();
+  const adminEmails = collectAdminEmails_(staffValues);
   const existingFilesMap = buildExistingFileMap_(targetFolder);
   const pendingLinkWrites = new Array(staffValues.length);
 
   let processCount = 0;
   let skipCount = 0;
   let status = 'COMPLETE';
+  let noEmailList = [];
 
   // --- ループ処理 ---
   // forEachではなくforループにして中断できるようにする
@@ -120,15 +146,24 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
     const rowIndex = CONFIG_GEN.STAFF_START_ROW + i;
     const staffId = row[CONFIG_GEN.COL_ID - 1];   
     const staffName = row[CONFIG_GEN.COL_NAME - 1]; 
+    const staffEmail = row[CONFIG_GEN.COL_EMAIL - 1];
     const rawResignDate = row[CONFIG_GEN.COL_RESIGN - 1];
 
     if (!staffName) continue;
-    if (targetId !== "" && String(staffId) !== String(targetId)) continue;
+    if (
+      targetId !== "" &&
+      String(staffId) !== String(targetId) &&
+      String(staffEmail) !== String(targetId)
+    ) {
+      continue;
+    }
 
     // --- ①対策：重複チェック ---
     const newFileName = staffName + "_出勤簿_" + fiscalYear + "年度";
     const existingFile = existingFilesMap[newFileName];
     if (existingFile) {
+      grantEditorsSafely_(existingFile, adminEmails, staffName, noEmailList, true);
+
       // 既にファイルがある場合はスキップし、リンクだけ念の為更新（または何もしない）
       const formula = '=HYPERLINK("' + existingFile.getUrl() + '", "' + staffId + '出勤簿")';
       pendingLinkWrites[i] = formula;
@@ -163,6 +198,10 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
 
     // --- ファイル作成 ---
     const newFile = templateFile.makeCopy(newFileName, targetFolder);
+    if (!staffEmail || String(staffEmail).trim() === "") {
+      noEmailList.push(staffName + " (ID: " + staffId + ") メールアドレス未入力");
+    }
+    grantEditorsSafely_(newFile, [staffEmail].concat(adminEmails), staffName, noEmailList, false, staffId);
     const newSS = SpreadsheetApp.open(newFile);
     const baseSheet = newSS.getSheets()[0];
     
@@ -187,8 +226,65 @@ function createStaffAttendanceFiles(fiscalYear, targetId, startTime) {
 
   applyPendingLinkWrites_(staffSheet, CONFIG_GEN.STAFF_START_ROW, targetLinkCol, pendingLinkWrites);
 
-  return { count: processCount, skipped: skipCount, status: status };
+  return { count: processCount, skipped: skipCount, status: status, noEmailList: noEmailList };
 }
+
+function collectAdminEmails_(staffValues) {
+  const adminEmails = [];
+  const seen = {};
+
+  for (let i = 0; i < staffValues.length; i++) {
+    const row = staffValues[i];
+    const adminFlag = row[CONFIG_GEN.COL_ADMIN - 1];
+    const email = row[CONFIG_GEN.COL_EMAIL - 1];
+
+    if (!isAdminFlagEnabled_(adminFlag)) continue;
+    if (!email || String(email).trim() === '') continue;
+
+    const normalizedEmail = String(email).trim();
+    if (seen[normalizedEmail]) continue;
+
+    seen[normalizedEmail] = true;
+    adminEmails.push(normalizedEmail);
+  }
+
+  return adminEmails;
+}
+
+function isAdminFlagEnabled_(value) {
+  if (value === 1 || value === '1') return true;
+  if (typeof value === 'string' && value.trim() === '1') return true;
+  return false;
+}
+
+function grantEditorsSafely_(file, emails, staffName, noEmailList, isExistingFile, staffId) {
+  const uniqueEmails = [];
+  const seen = {};
+
+  for (let i = 0; i < emails.length; i++) {
+    const email = emails[i];
+    if (!email || String(email).trim() === '') continue;
+
+    const normalizedEmail = String(email).trim();
+    if (seen[normalizedEmail]) continue;
+
+    seen[normalizedEmail] = true;
+    uniqueEmails.push(normalizedEmail);
+  }
+
+  for (let i = 0; i < uniqueEmails.length; i++) {
+    const email = uniqueEmails[i];
+
+    try {
+      file.addEditor(email);
+    } catch (e) {
+      const fileLabel = isExistingFile ? '既存ファイル' : '新規ファイル';
+      const idLabel = staffId ? 'ID: ' + staffId + ', ' : '';
+      noEmailList.push(staffName + ' (' + idLabel + 'Mail: ' + email + ') ' + fileLabel + ' 権限付与失敗\nエラー: ' + e.message);
+    }
+  }
+}
+
 
 function setupAttendanceSheet(sheet, fiscalYear, currentYear, month, staffId, staffName, templateProtectionDefs) {
   sheet.getRange(2, 1, 1, 4).setValues([[currentYear, month, staffId, staffName]]);

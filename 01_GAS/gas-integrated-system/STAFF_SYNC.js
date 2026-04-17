@@ -103,6 +103,9 @@ function syncStaffInfo() {
       ];
     });
 
+    // 退職日が空欄のスタッフのみを共有対象とする
+    const activeStaffEmails = collectActiveStaffEmails_(sourceRangeValues);
+
     // 4. 転記先への書き込み
     const destLastRow = destSheet.getLastRow();
     
@@ -124,10 +127,134 @@ function syncStaffInfo() {
       STAFF_SYNC_CONFIG.DEST_COL_WIDTH
     ).setValues(outputValues);
 
-    destSpreadsheet.toast('スタッフ情報を更新しました', '更新完了');
+    const shareResult = syncViewersToCurrentSpreadsheet_(destSpreadsheet, activeStaffEmails);
+
+    destSpreadsheet.toast(
+      'スタッフ情報を更新しました（共有追加: ' + shareResult.addedCount + '件 / 共有削除: ' + shareResult.removedCount + '件）',
+      '更新完了'
+    );
 
   } catch (e) {
     console.error(e);
     ui.alert('エラーが発生しました: ' + e.message);
   }
+}
+
+function collectActiveStaffEmails_(sourceRows) {
+  const emails = [];
+  const seen = {};
+
+  for (let i = 0; i < sourceRows.length; i++) {
+    const row = sourceRows[i];
+    const email = normalizeEmail_(row[STAFF_SYNC_CONFIG.SRC_IDX_MAIL]);
+    const retiredDate = row[STAFF_SYNC_CONFIG.SRC_IDX_COL_H];
+
+    if (!email || seen[email]) {
+      continue;
+    }
+    if (!isEmptyCell_(retiredDate)) {
+      continue;
+    }
+
+    seen[email] = true;
+    emails.push(email);
+  }
+
+  return emails;
+}
+
+function syncViewersToCurrentSpreadsheet_(spreadsheet, activeEmails) {
+  const result = {
+    addedCount: 0,
+    removedCount: 0,
+    errorCount: 0
+  };
+
+  if (!activeEmails) {
+    return result;
+  }
+
+  const activeMap = {};
+  for (let i = 0; i < activeEmails.length; i++) {
+    const email = normalizeEmail_(activeEmails[i]);
+    if (email) {
+      activeMap[email] = true;
+    }
+  }
+
+  const file = DriveApp.getFileById(spreadsheet.getId());
+
+  for (let i = 0; i < activeEmails.length; i++) {
+    const email = normalizeEmail_(activeEmails[i]);
+    if (!email) {
+      continue;
+    }
+    try {
+      file.addViewer(email);
+      result.addedCount++;
+    } catch (e) {
+      result.errorCount++;
+      console.warn('閲覧権限付与に失敗: ' + email + ' / ' + e.message);
+    }
+  }
+
+  const protectedEmails = getProtectedShareEmails_(file);
+  const viewers = file.getViewers();
+  for (let j = 0; j < viewers.length; j++) {
+    const viewerEmail = normalizeEmail_(viewers[j].getEmail());
+    if (!viewerEmail) {
+      continue;
+    }
+    if (protectedEmails[viewerEmail]) {
+      continue;
+    }
+    if (activeMap[viewerEmail]) {
+      continue;
+    }
+
+    try {
+      file.removeViewer(viewerEmail);
+      result.removedCount++;
+    } catch (e) {
+      result.errorCount++;
+      console.warn('閲覧権限削除に失敗: ' + viewerEmail + ' / ' + e.message);
+    }
+  }
+
+  return result;
+}
+
+function getProtectedShareEmails_(file) {
+  const protectedMap = {};
+
+  const owner = file.getOwner();
+  if (owner && owner.getEmail) {
+    const ownerEmail = normalizeEmail_(owner.getEmail());
+    if (ownerEmail) {
+      protectedMap[ownerEmail] = true;
+    }
+  }
+
+  const editors = file.getEditors();
+  for (let i = 0; i < editors.length; i++) {
+    const editorEmail = normalizeEmail_(editors[i].getEmail());
+    if (editorEmail) {
+      protectedMap[editorEmail] = true;
+    }
+  }
+
+  const currentUserEmail = normalizeEmail_(Session.getActiveUser().getEmail());
+  if (currentUserEmail) {
+    protectedMap[currentUserEmail] = true;
+  }
+
+  return protectedMap;
+}
+
+function normalizeEmail_(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isEmptyCell_(value) {
+  return value === '' || value === null || value === undefined;
 }

@@ -7,7 +7,7 @@
 const CONFIG_FIX2 = {
   // 管理シートの設定
   STAFF_START_ROW: 2,       // データ開始行
-  COL_LINK_2025: 6,         // 6 (F列)
+  COL_LINK_2025: 7,         // 7 (G列)
   COL_NAME: 3,              // C列 (氏名)
   
   // 更新対象の設定
