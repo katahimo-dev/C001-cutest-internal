@@ -7,11 +7,10 @@ var YEAR_OVERRIDE = ''; // 例: '2026' を入れると固定年度で動作
 var YEAR = YEAR_OVERRIDE || String(getCurrentFiscalYear_());
 var STAFF_SHEET_NAME = 'Staff'; // タブ名
 var ADMIN_EMAILS = [
-  // 管理者ユーザーのメールアドレスを必要に応じて追加してください
+  // 管理者ユーザーのメールアドレスを必要に応じて追加してください 全ユーザーのを見れるようになります。
+  // なお各出勤簿スプレッドシートの編集権限が必要です。
   // 例: 'admin@example.com'
-'erikadoula.2525mama@gmail.com',
 'cutestmaster0@gmail.com',
-'ohru131@gmail.com'
 ];
 
 function getCurrentFiscalYear_(baseDate) {

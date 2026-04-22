@@ -327,8 +327,92 @@ function getCalendarEvents(date, customerList) {
     }
   });
 
+  // 同じ日付・同じスタッフの [事務] イベントで時間が重複しているものをマージ
+  return mergeOverlappingOfficeWork(processedEvents);
+}
 
-  return processedEvents;
+/**
+ * 同じスタッフの [事務] イベントで時間が重複しているものをマージする
+ * @param {Array} events processedEventsの配列
+ */
+function mergeOverlappingOfficeWork(events) {
+  const officeWorks = events.filter(e => e.eventType === "OFFICE WORK");
+  const nonOfficeWorks = events.filter(e => e.eventType !== "OFFICE WORK");
+
+  if (officeWorks.length === 0) {
+    return events;
+  }
+
+  // スタッフごとにグループ化
+  const staffGroups = {};
+  officeWorks.forEach(event => {
+    const staffName = event.staffNameRaw || "";
+    if (!staffGroups[staffName]) {
+      staffGroups[staffName] = [];
+    }
+    staffGroups[staffName].push(event);
+  });
+
+  // 各スタッフの[事務]イベント内で時間が重複しているものをマージ
+  const mergedEvents = [];
+  Object.keys(staffGroups).forEach(staffName => {
+    const staffEvents = staffGroups[staffName];
+    
+    // 開始時間でソート
+    staffEvents.sort((a, b) => a.startTime - b.startTime);
+
+    const processed = [];
+    let currentMergeGroup = null;
+
+    staffEvents.forEach(event => {
+      if (!currentMergeGroup) {
+        currentMergeGroup = {
+          names: [event.customerInfo.name],
+          startTime: event.startTime,
+          endTime: event.endTime,
+          baseEvent: event
+        };
+      } else if (event.startTime < currentMergeGroup.endTime) {
+        // 時間が重複している → マージ
+        currentMergeGroup.names.push(event.customerInfo.name);
+        currentMergeGroup.endTime = new Date(Math.max(currentMergeGroup.endTime.getTime(), event.endTime.getTime()));
+      } else {
+        // 重複していない → 前のグループを確定して新しいグループを開始
+        processed.push(currentMergeGroup);
+        currentMergeGroup = {
+          names: [event.customerInfo.name],
+          startTime: event.startTime,
+          endTime: event.endTime,
+          baseEvent: event
+        };
+      }
+    });
+
+    if (currentMergeGroup) {
+      processed.push(currentMergeGroup);
+    }
+
+    // マージ結果をeventオブジェクトに変換
+    processed.forEach(group => {
+      mergedEvents.push({
+        startTime: group.startTime,
+        endTime: group.endTime,
+        eventType: "OFFICE WORK",
+        customerInfo: {
+          name: group.names.join(","), // カンマでつなぐ
+          address: group.baseEvent.customerInfo.address,
+          lat: group.baseEvent.customerInfo.lat,
+          lng: group.baseEvent.customerInfo.lng,
+          parkingarea: group.baseEvent.customerInfo.parkingarea
+        },
+        staffNameRaw: staffName,
+        reservaUrl: "",
+        isMeeting: false
+      });
+    });
+  });
+
+  return [...nonOfficeWorks, ...mergedEvents];
 }
 
 // 住所から緯度経度を取得するヘルパー
