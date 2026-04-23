@@ -141,6 +141,155 @@
       }
       .calendar-btn:disabled { background: #bdbdbd; box-shadow: none; color: #f5f5f5; }
 
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 2000;
+      }
+      .modal-card {
+        width: 100%;
+        max-width: 560px;
+        background: #fff;
+        border-radius: 16px;
+        border: 2px solid #f1f8e9;
+        padding: 18px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+      }
+      .modal-title {
+        margin: 0;
+        color: #2e7d32;
+        font-size: 19px;
+        font-weight: bold;
+      }
+      .modal-note {
+        margin: 8px 0 0;
+        color: #6d4c41;
+        font-size: 13px;
+      }
+      .modal-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .modal-row .col-half {
+        flex: 1;
+      }
+      .staff-check-panel {
+        margin-top: 14px;
+        border: 2px dashed #c5e1a5;
+        border-radius: 12px;
+        padding: 12px;
+        background: #f9fbe7;
+      }
+      .staff-check-tools {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .tiny-btn {
+        border: none;
+        border-radius: 8px;
+        background: #8bc34a;
+        color: #fff;
+        font-size: 13px;
+        padding: 8px 10px;
+      }
+      .staff-check-list {
+        max-height: 180px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #dcedc8;
+        border-radius: 10px;
+        padding: 8px;
+      }
+      .staff-check-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 4px;
+        color: #4e342e;
+        font-size: 15px;
+      }
+      .staff-check-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+      }
+      .modal-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .modal-btn {
+        flex: 1;
+        border: none;
+        border-radius: 12px;
+        height: 46px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .modal-cancel {
+        background: #eeeeee;
+        color: #616161;
+      }
+      .modal-run {
+        background: linear-gradient(to right, #43a047, #2e7d32);
+        color: #fff;
+      }
+      .modal-run:disabled {
+        background: #bdbdbd;
+        color: #f5f5f5;
+      }
+      .modal-retry {
+        background: linear-gradient(to right, #f9a825, #f57f17);
+        color: #fff;
+      }
+      .modal-retry:disabled {
+        background: #bdbdbd;
+        color: #f5f5f5;
+      }
+      .sync-progress-panel {
+        margin-top: 12px;
+        border: 1px solid #dcedc8;
+        border-radius: 10px;
+        background: #f9fbe7;
+        padding: 10px;
+      }
+      .sync-progress-label {
+        margin: 0 0 6px;
+        color: #558b2f;
+        font-size: 13px;
+        font-weight: bold;
+      }
+      .sync-progress-track {
+        width: 100%;
+        height: 10px;
+        border-radius: 99px;
+        background: #e8f5e9;
+        overflow: hidden;
+      }
+      .sync-progress-bar {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(to right, #66bb6a, #2e7d32);
+        transition: width 0.2s ease;
+      }
+      .sync-progress-stats {
+        margin-top: 8px;
+        color: #4e342e;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .sync-progress-current {
+        margin-top: 6px;
+        color: #6d4c41;
+        font-size: 12px;
+      }
+
       #loading, #error-msg, #success-msg { display: none; padding: 20px; margin-bottom: 25px; text-align: center; font-weight: bold; border-radius: 15px; font-size: 16px; }
       #error-msg { color: #d32f2f; background: #ffcdd2; border: 2px solid #ef9a9a; }
       #success-msg { color: #388e3c; background: #c8e6c9; border: 2px solid #a5d6a7; }
@@ -276,11 +425,56 @@
       </form>
     </div>
 
+    <div id="calendar-sync-modal" class="modal-overlay" onclick="handleCalendarModalBackdrop(event)">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="calendar-modal-title">
+        <h3 id="calendar-modal-title" class="modal-title">カレンダー反映の対象を選択</h3>
+        <p class="modal-note">開始日と終了日を指定して、チェックしたスタッフ分を一括更新できます。</p>
+
+        <div class="modal-row">
+          <div class="col-half">
+            <label style="margin-top:8px;">開始日</label>
+            <input type="date" id="calendar-sync-start-date">
+          </div>
+          <div class="col-half">
+            <label style="margin-top:8px;">終了日</label>
+            <input type="date" id="calendar-sync-end-date">
+          </div>
+        </div>
+
+        <div id="calendar-sync-staff-panel" class="staff-check-panel" style="display:none;">
+          <label style="margin-top:0;">対象スタッフ（チェックONのみ更新）</label>
+          <div class="staff-check-tools">
+            <button type="button" class="tiny-btn" id="sync-select-all-btn" onclick="setAllSyncStaffChecks(true)">全選択</button>
+            <button type="button" class="tiny-btn" id="sync-clear-all-btn" onclick="setAllSyncStaffChecks(false)">全解除</button>
+          </div>
+          <div id="calendar-sync-staff-list" class="staff-check-list"></div>
+        </div>
+
+        <div id="calendar-sync-progress" class="sync-progress-panel" style="display:none;">
+          <p class="sync-progress-label">処理進捗</p>
+          <div class="sync-progress-track">
+            <div id="calendar-sync-progress-bar" class="sync-progress-bar"></div>
+          </div>
+          <div id="calendar-sync-progress-stats" class="sync-progress-stats"></div>
+          <div id="calendar-sync-progress-current" class="sync-progress-current"></div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-cancel" id="calendar-sync-cancel-btn" onclick="closeCalendarSyncDialog()">キャンセル</button>
+          <button type="button" class="modal-btn modal-retry" id="calendar-sync-retry-btn" onclick="rerunFailedCalendarSyncTargets()" disabled>失敗分のみ再実行</button>
+          <button type="button" class="modal-btn modal-run" id="calendar-sync-run-btn" onclick="runCalendarSyncFromDialog()">反映を実行</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       var APP_STATE = {
         isAdmin: false,
         targetStaffName: '',
-        staffNames: []
+        staffNames: [],
+        syncStaffCheckState: {},
+        syncRunning: false,
+        lastFailedTargets: []
       };
 
       window.onload = function() {
@@ -441,9 +635,11 @@
       }
 
       function loadCalendarSchedule() {
+        openCalendarSyncDialog();
+      }
+
+      function openCalendarSyncDialog() {
         var dateVal = document.getElementById('target-date').value;
-        var btn = document.getElementById('calendar-sync-btn');
-        
         if (!dateVal) {
           showError('先に日付を選択してください。');
           return;
@@ -455,29 +651,469 @@
           return;
         }
 
-        btn.disabled = true;
-        btn.textContent = '読み込み中...';
+        document.getElementById('calendar-sync-start-date').value = dateVal;
+        document.getElementById('calendar-sync-end-date').value = dateVal;
+
+        if (APP_STATE.isAdmin) {
+          renderSyncStaffChecklist(selectedStaffName);
+          document.getElementById('calendar-sync-staff-panel').style.display = 'block';
+        } else {
+          document.getElementById('calendar-sync-staff-panel').style.display = 'none';
+        }
+
+        APP_STATE.lastFailedTargets = [];
+        resetCalendarSyncProgress(0);
+        setCalendarSyncDialogBusy(false);
+        setCalendarSyncRetryButton(false);
+        document.getElementById('calendar-sync-modal').style.display = 'flex';
+      }
+
+      function closeCalendarSyncDialog() {
+        if (APP_STATE.syncRunning) {
+          return;
+        }
+        document.getElementById('calendar-sync-modal').style.display = 'none';
+      }
+
+      function handleCalendarModalBackdrop(event) {
+        if (APP_STATE.syncRunning) {
+          return;
+        }
+        if (event && event.target && event.target.id === 'calendar-sync-modal') {
+          closeCalendarSyncDialog();
+        }
+      }
+
+      function renderSyncStaffChecklist(selectedStaffName) {
+        var container = document.getElementById('calendar-sync-staff-list');
+        container.innerHTML = '';
+
+        var checkState = APP_STATE.syncStaffCheckState || {};
+        var initialized = false;
+
+        APP_STATE.staffNames.forEach(function(name) {
+          if (typeof checkState[name] === 'undefined') {
+            checkState[name] = true;
+            initialized = true;
+          }
+        });
+        APP_STATE.syncStaffCheckState = checkState;
+
+        if (initialized && selectedStaffName && checkState[selectedStaffName] === false) {
+          checkState[selectedStaffName] = true;
+        }
+
+        APP_STATE.staffNames.forEach(function(name) {
+          var row = document.createElement('label');
+          row.className = 'staff-check-item';
+
+          var checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = name;
+          checkbox.checked = !!checkState[name];
+          checkbox.onchange = function() {
+            APP_STATE.syncStaffCheckState[name] = checkbox.checked;
+          };
+
+          var text = document.createElement('span');
+          text.textContent = name;
+
+          row.appendChild(checkbox);
+          row.appendChild(text);
+          container.appendChild(row);
+        });
+      }
+
+      function setAllSyncStaffChecks(checked) {
+        var container = document.getElementById('calendar-sync-staff-list');
+        var boxes = container.querySelectorAll('input[type="checkbox"]');
+        boxes.forEach(function(box) {
+          box.checked = checked;
+          APP_STATE.syncStaffCheckState[box.value] = checked;
+        });
+      }
+
+      function getCheckedSyncStaffNames() {
+        if (!APP_STATE.isAdmin) {
+          return [getSelectedStaffName()];
+        }
+
+        var checked = [];
+        var container = document.getElementById('calendar-sync-staff-list');
+        var boxes = container.querySelectorAll('input[type="checkbox"]');
+        boxes.forEach(function(box) {
+          if (box.checked) {
+            checked.push(box.value);
+          }
+        });
+        return checked;
+      }
+
+      function runCalendarSyncFromDialog() {
+        var startDate = document.getElementById('calendar-sync-start-date').value;
+        var endDate = document.getElementById('calendar-sync-end-date').value;
+
+        if (!startDate || !endDate) {
+          showError('開始日と終了日を指定してください。');
+          return;
+        }
+
+        if (new Date(startDate.replace(/-/g, '/')) > new Date(endDate.replace(/-/g, '/'))) {
+          showError('終了日は開始日以降にしてください。');
+          return;
+        }
+
+        var targetStaffNames = getCheckedSyncStaffNames();
+        if (!targetStaffNames || targetStaffNames.length === 0) {
+          showError('更新対象スタッフを1名以上チェックしてください。');
+          return;
+        }
+
+        var targets = buildCalendarSyncTargets(startDate, endDate, targetStaffNames);
+        if (targets.length === 0) {
+          showError('更新対象が見つかりませんでした。');
+          return;
+        }
+
+        setCalendarSyncDialogBusy(true);
+        resetCalendarSyncProgress(targets.length);
+        updateCalendarSyncProgress({
+          total: targets.length,
+          completed: 0,
+          succeeded: 0,
+          failed: 0,
+          appointmentCount: 0,
+          currentLabel: '開始準備中...'
+        });
         hideMessages();
+
+        runCalendarSyncQueue(targets, function(finalResult) {
+          setCalendarSyncDialogBusy(false);
+          APP_STATE.lastFailedTargets = extractFailedTargets(finalResult.details || []);
+          setCalendarSyncRetryButton(APP_STATE.lastFailedTargets.length > 0);
+
+          if (!finalResult.success) {
+            showError(finalResult.error || 'データ取得に失敗しました。');
+            return;
+          }
+
+          closeCalendarSyncDialog();
+          showSuccess(formatCalendarSyncSummary(finalResult));
+          reloadDisplayedDataWithoutHidingMessages();
+        });
+      }
+
+      function rerunFailedCalendarSyncTargets() {
+        if (APP_STATE.syncRunning) {
+          return;
+        }
+
+        var targets = (APP_STATE.lastFailedTargets || []).slice();
+        if (targets.length === 0) {
+          showError('再実行できる失敗対象がありません。');
+          return;
+        }
+
+        setCalendarSyncDialogBusy(true);
+        setCalendarSyncRetryButton(false);
+        resetCalendarSyncProgress(targets.length);
+        updateCalendarSyncProgress({
+          total: targets.length,
+          completed: 0,
+          succeeded: 0,
+          failed: 0,
+          appointmentCount: 0,
+          currentLabel: '失敗分の再実行を開始します...'
+        });
+        hideMessages();
+
+        runCalendarSyncQueue(targets, function(finalResult) {
+          setCalendarSyncDialogBusy(false);
+          APP_STATE.lastFailedTargets = extractFailedTargets(finalResult.details || []);
+          setCalendarSyncRetryButton(APP_STATE.lastFailedTargets.length > 0);
+
+          if (!finalResult.success) {
+            showError('失敗分再実行: ' + (finalResult.error || 'すべて失敗しました。'));
+            return;
+          }
+
+          var remain = APP_STATE.lastFailedTargets.length;
+          var message = '失敗分の再実行が完了しました。';
+          message += ' 成功: ' + (finalResult.summary ? finalResult.summary.succeeded : 0) + '件';
+          message += ' / 再失敗: ' + (finalResult.summary ? finalResult.summary.failed : 0) + '件';
+          if (remain > 0) {
+            message += '（未解消: ' + remain + '件）';
+          }
+          showSuccess(message);
+          reloadDisplayedDataWithoutHidingMessages();
+        });
+      }
+
+      function buildCalendarSyncTargets(startDate, endDate, targetStaffNames) {
+        var staffList = Array.isArray(targetStaffNames) ? targetStaffNames : [];
+        var start = new Date(startDate.replace(/-/g, '/'));
+        var end = new Date(endDate.replace(/-/g, '/'));
+        start.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+
+        var targets = [];
+        var cursor = new Date(start.getTime());
+        while (cursor.getTime() <= end.getTime()) {
+          var dayStr = formatDateToYmd(cursor);
+          staffList.forEach(function(name) {
+            targets.push({
+              date: dayStr,
+              targetStaffName: name
+            });
+          });
+          cursor.setDate(cursor.getDate() + 1);
+        }
+        return targets;
+      }
+
+      function runCalendarSyncQueue(targets, done) {
+        var summary = {
+          startDate: targets[0].date,
+          endDate: targets[targets.length - 1].date,
+          dateCount: countUniqueDates(targets),
+          staffCount: countUniqueStaff(targets),
+          totalTargets: targets.length,
+          succeeded: 0,
+          failed: 0,
+          appointmentCount: 0
+        };
+        var details = [];
+
+        APP_STATE.syncRunning = true;
+
+        function processNext(index) {
+          if (index >= targets.length) {
+            APP_STATE.syncRunning = false;
+            done({
+              success: summary.succeeded > 0,
+              summary: summary,
+              details: details,
+              error: summary.succeeded > 0 ? '' : '対象データを反映できませんでした。詳細を確認してください。'
+            });
+            return;
+          }
+
+          var target = targets[index];
+          updateCalendarSyncProgress({
+            total: targets.length,
+            completed: index,
+            succeeded: summary.succeeded,
+            failed: summary.failed,
+            appointmentCount: summary.appointmentCount,
+            currentLabel: '実行中: ' + target.date + ' / ' + target.targetStaffName
+          });
+
+          google.script.run
+            .withSuccessHandler(function(res) {
+              if (res && res.success) {
+                summary.succeeded++;
+                summary.appointmentCount += Number(res.appointmentCount || 0);
+                details.push({
+                  success: true,
+                  date: target.date,
+                  targetStaffName: target.targetStaffName,
+                  appointmentCount: Number(res.appointmentCount || 0)
+                });
+              } else {
+                summary.failed++;
+                details.push({
+                  success: false,
+                  date: target.date,
+                  targetStaffName: target.targetStaffName,
+                  error: (res && res.error) ? res.error : 'データ取得に失敗しました。'
+                });
+              }
+
+              updateCalendarSyncProgress({
+                total: targets.length,
+                completed: index + 1,
+                succeeded: summary.succeeded,
+                failed: summary.failed,
+                appointmentCount: summary.appointmentCount,
+                currentLabel: '完了: ' + target.date + ' / ' + target.targetStaffName
+              });
+
+              processNext(index + 1);
+            })
+            .withFailureHandler(function(e) {
+              summary.failed++;
+              details.push({
+                success: false,
+                date: target.date,
+                targetStaffName: target.targetStaffName,
+                error: 'サーバー接続エラー: ' + e
+              });
+
+              updateCalendarSyncProgress({
+                total: targets.length,
+                completed: index + 1,
+                succeeded: summary.succeeded,
+                failed: summary.failed,
+                appointmentCount: summary.appointmentCount,
+                currentLabel: '失敗: ' + target.date + ' / ' + target.targetStaffName
+              });
+
+              processNext(index + 1);
+            })
+            .syncCalendarToTimesheet(target.date, target.targetStaffName);
+        }
+
+        processNext(0);
+      }
+
+      function extractFailedTargets(details) {
+        var failed = [];
+        var seen = {};
+        details.forEach(function(item) {
+          if (!item || item.success) {
+            return;
+          }
+          var date = String(item.date || '').trim();
+          var name = String(item.targetStaffName || '').trim();
+          if (!date || !name) {
+            return;
+          }
+          var key = date + '|' + name;
+          if (seen[key]) {
+            return;
+          }
+          seen[key] = true;
+          failed.push({
+            date: date,
+            targetStaffName: name
+          });
+        });
+        return failed;
+      }
+
+      function countUniqueDates(targets) {
+        var seen = {};
+        var count = 0;
+        targets.forEach(function(item) {
+          if (!seen[item.date]) {
+            seen[item.date] = true;
+            count++;
+          }
+        });
+        return count;
+      }
+
+      function countUniqueStaff(targets) {
+        var seen = {};
+        var count = 0;
+        targets.forEach(function(item) {
+          if (!seen[item.targetStaffName]) {
+            seen[item.targetStaffName] = true;
+            count++;
+          }
+        });
+        return count;
+      }
+
+      function formatDateToYmd(dateObj) {
+        var y = dateObj.getFullYear();
+        var m = ('0' + (dateObj.getMonth() + 1)).slice(-2);
+        var d = ('0' + dateObj.getDate()).slice(-2);
+        return y + '-' + m + '-' + d;
+      }
+
+      function resetCalendarSyncProgress(total) {
+        var panel = document.getElementById('calendar-sync-progress');
+        var bar = document.getElementById('calendar-sync-progress-bar');
+        var stats = document.getElementById('calendar-sync-progress-stats');
+        var current = document.getElementById('calendar-sync-progress-current');
+        panel.style.display = total > 0 ? 'block' : 'none';
+        bar.style.width = '0%';
+        stats.textContent = total > 0 ? ('0 / ' + total + ' 件処理') : '';
+        current.textContent = '';
+      }
+
+      function updateCalendarSyncProgress(state) {
+        var total = Number(state.total || 0);
+        var completed = Number(state.completed || 0);
+        var succeeded = Number(state.succeeded || 0);
+        var failed = Number(state.failed || 0);
+        var appointmentCount = Number(state.appointmentCount || 0);
+        var label = state.currentLabel || '';
+
+        var panel = document.getElementById('calendar-sync-progress');
+        var bar = document.getElementById('calendar-sync-progress-bar');
+        var stats = document.getElementById('calendar-sync-progress-stats');
+        var current = document.getElementById('calendar-sync-progress-current');
+
+        panel.style.display = 'block';
+
+        var percent = total > 0 ? Math.min(100, Math.floor((completed / total) * 100)) : 0;
+        bar.style.width = percent + '%';
+        stats.textContent =
+          completed + ' / ' + total + ' 件処理（成功: ' + succeeded + ' / 失敗: ' + failed + ' / 予定件数: ' + appointmentCount + '）';
+        current.textContent = label;
+      }
+
+      function setCalendarSyncDialogBusy(busy) {
+        APP_STATE.syncRunning = !!busy;
+        var runBtn = document.getElementById('calendar-sync-run-btn');
+        var retryBtn = document.getElementById('calendar-sync-retry-btn');
+        var cancelBtn = document.getElementById('calendar-sync-cancel-btn');
+        var startInput = document.getElementById('calendar-sync-start-date');
+        var endInput = document.getElementById('calendar-sync-end-date');
+        var selectAllBtn = document.getElementById('sync-select-all-btn');
+        var clearAllBtn = document.getElementById('sync-clear-all-btn');
+
+        runBtn.disabled = busy;
+        runBtn.textContent = busy ? '反映中...' : '反映を実行';
+  if (retryBtn) retryBtn.disabled = busy || (APP_STATE.lastFailedTargets || []).length === 0;
+        cancelBtn.disabled = busy;
+        startInput.disabled = busy;
+        endInput.disabled = busy;
+        if (selectAllBtn) selectAllBtn.disabled = busy;
+        if (clearAllBtn) clearAllBtn.disabled = busy;
+
+        var boxes = document.querySelectorAll('#calendar-sync-staff-list input[type="checkbox"]');
+        boxes.forEach(function(box) {
+          box.disabled = busy;
+        });
+      }
+
+      function setCalendarSyncRetryButton(enabled) {
+        var retryBtn = document.getElementById('calendar-sync-retry-btn');
+        if (!retryBtn) return;
+        retryBtn.disabled = !enabled || APP_STATE.syncRunning;
+      }
+
+      function formatCalendarSyncSummary(res) {
+        var summary = res.summary || {};
+        var text = '';
+        text += 'カレンダー反映が完了しました。';
+        text += ' 対象日数: ' + (summary.dateCount || 0) + '日';
+        text += ' / 対象スタッフ: ' + (summary.staffCount || 0) + '名';
+        text += ' / 成功: ' + (summary.succeeded || 0) + '件';
+        text += ' / 失敗: ' + (summary.failed || 0) + '件';
+        text += ' / 予定件数: ' + (summary.appointmentCount || 0) + '件';
+        if ((summary.failed || 0) > 0) {
+          text += '（失敗分はログ詳細を確認してください）';
+        }
+        return text;
+      }
+
+      function reloadDisplayedDataWithoutHidingMessages() {
+        var dateVal = document.getElementById('target-date').value;
+        var staffName = getSelectedStaffName();
+        if (!dateVal || !staffName) return;
 
         google.script.run
           .withSuccessHandler(function(res) {
-            btn.disabled = false;
-            btn.textContent = 'カレンダーから最新予定を取得して反映';
-
-            if (!res.success) {
-              showError(res.error || 'データ取得に失敗しました。');
-              return;
+            if (res && res.success) {
+              displayForm(res);
             }
-
-            displayForm(res);
-            showSuccess('カレンダーから ' + (res.appointmentCount || 0) + ' 件の予定を取得し、出勤簿に反映しました。内容を確認して保存してください。');
           })
-          .withFailureHandler(function(e) {
-            btn.disabled = false;
-            btn.textContent = 'カレンダーから最新予定を取得して反映';
-            showError('サーバー接続エラー: ' + e);
-          })
-          .syncCalendarToTimesheet(dateVal, selectedStaffName);
+          .withFailureHandler(function() {})
+          .getDataByDate(dateVal, staffName);
       }
 
       function showLoading(b) { document.getElementById('loading').style.display = b ? 'block' : 'none'; }

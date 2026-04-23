@@ -317,53 +317,195 @@ function writeRowData_(sheet, rowNumber, rowData, markChanged) {
 function syncCalendarToTimesheet(dateString, targetStaffName) {
   try {
     var context = getAccessContext_(targetStaffName);
-    var staffName = context.targetStaffName;
-    var dateStr = String(dateString || '').trim();
-
-    if (!dateStr) {
-      throw new Error('日付が未指定です。');
-    }
-
-    var spreadsheet = findSpreadsheetGlobal(staffName, YEAR);
-    var target = findTargetRow_(spreadsheet, dateStr);
-    if (target.rowNumber === -1) {
-      throw new Error('指定された日付 (' + dateStr + ') の行が見つかりませんでした。');
-    }
-
-    var lib = getRootSearchLib_();
-    if (!lib) {
-      throw new Error('カレンダー連携ライブラリが見つかりません。');
-    }
-    if (typeof lib.refreshAttendanceForStaffOnDate !== 'function') {
-      throw new Error('ライブラリに refreshAttendanceForStaffOnDate が存在しません。ライブラリバージョンを確認してください。');
-    }
-
-    var result = lib.refreshAttendanceForStaffOnDate(staffName, dateStr);
-    if (!result || result.success !== true) {
-      throw new Error('カレンダー予定の取得に失敗しました。');
-    }
-
-    writeRowData_(target.sheet, target.rowNumber, {
-      C: '', D: '', E: '', AI: '',
-      H: '', L: '', M: '', N: '', AG: '',
-      Q: '', U: '', V: '', W: '', AH: '', AJ: '',
-      X: '', Y: '', Z: '', AA: '', AB: '', AC: ''
-    }, false);
-    writeRowData_(target.sheet, target.rowNumber, result.rowData || {}, false);
-
-    PropertiesService.getUserProperties().setProperty('LAST_SHEET_NAME_' + staffName, target.sheet.getName());
+    var single = syncCalendarForStaffOnDate_(normalizeDateString_(dateString), context.targetStaffName);
 
     return {
       success: true,
-      rowData: readRowData_(target.sheet, target.rowNumber),
-      rowNumber: target.rowNumber,
-      targetStaffName: staffName,
+      rowData: single.rowData,
+      rowNumber: single.rowNumber,
+      targetStaffName: single.targetStaffName,
       isAdmin: context.isAdmin,
-      appointmentCount: (result.appointments || []).length
+      appointmentCount: single.appointmentCount
     };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+function syncCalendarToTimesheetRange(startDateString, endDateString, targetStaffNames) {
+  try {
+    var startDate = parseDateString_(startDateString, '開始日');
+    var endDate = parseDateString_(endDateString || startDateString, '終了日');
+
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new Error('終了日は開始日以降の日付を指定してください。');
+    }
+
+    var requested = [];
+    if (Array.isArray(targetStaffNames)) {
+      requested = targetStaffNames;
+    } else if (targetStaffNames) {
+      requested = [targetStaffNames];
+    }
+
+    var firstStaff = requested.length > 0 ? requested[0] : '';
+    var context = getAccessContext_(firstStaff);
+    var staffNames = resolveSyncTargetStaffNames_(context, requested);
+
+    var details = [];
+    var successCount = 0;
+    var failCount = 0;
+    var appointmentCount = 0;
+    var dateCount = 0;
+    var cursor = new Date(startDate.getTime());
+
+    while (cursor.getTime() <= endDate.getTime()) {
+      var dayStr = Utilities.formatDate(cursor, 'Asia/Tokyo', 'yyyy-MM-dd');
+      dateCount++;
+
+      for (var i = 0; i < staffNames.length; i++) {
+        var staffName = staffNames[i];
+
+        try {
+          var result = syncCalendarForStaffOnDate_(dayStr, staffName);
+          successCount++;
+          appointmentCount += result.appointmentCount;
+          details.push({
+            success: true,
+            date: dayStr,
+            targetStaffName: staffName,
+            appointmentCount: result.appointmentCount
+          });
+        } catch (e) {
+          failCount++;
+          details.push({
+            success: false,
+            date: dayStr,
+            targetStaffName: staffName,
+            error: e.toString()
+          });
+        }
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    var total = dateCount * staffNames.length;
+
+    return {
+      success: successCount > 0,
+      isAdmin: context.isAdmin,
+      summary: {
+        startDate: Utilities.formatDate(startDate, 'Asia/Tokyo', 'yyyy-MM-dd'),
+        endDate: Utilities.formatDate(endDate, 'Asia/Tokyo', 'yyyy-MM-dd'),
+        dateCount: dateCount,
+        staffCount: staffNames.length,
+        totalTargets: total,
+        succeeded: successCount,
+        failed: failCount,
+        appointmentCount: appointmentCount
+      },
+      details: details,
+      error: successCount > 0 ? '' : '対象データを反映できませんでした。詳細を確認してください。'
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function resolveSyncTargetStaffNames_(context, requestedStaffNames) {
+  if (!context.isAdmin) {
+    return [context.targetStaffName];
+  }
+
+  var requested = Array.isArray(requestedStaffNames) ? requestedStaffNames : [];
+  var allowMap = {};
+  var i;
+  for (i = 0; i < context.staffNames.length; i++) {
+    allowMap[context.staffNames[i]] = true;
+  }
+
+  var names = [];
+  var seen = {};
+  for (i = 0; i < requested.length; i++) {
+    var name = String(requested[i] || '').trim();
+    if (!name) continue;
+    if (!allowMap[name]) {
+      throw new Error('指定スタッフが有効一覧に存在しません: ' + name);
+    }
+    if (!seen[name]) {
+      names.push(name);
+      seen[name] = true;
+    }
+  }
+
+  if (names.length === 0) {
+    throw new Error('管理者モードでは対象スタッフを1名以上選択してください。');
+  }
+  return names;
+}
+
+function parseDateString_(value, label) {
+  var dateText = normalizeDateString_(value);
+  var d = new Date(dateText.replace(/-/g, '/'));
+  if (isNaN(d.getTime())) {
+    throw new Error(label + 'が不正です。YYYY-MM-DD 形式で指定してください。');
+  }
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function normalizeDateString_(value) {
+  var dateText = String(value || '').trim();
+  if (!dateText) {
+    throw new Error('日付が未指定です。');
+  }
+  return dateText;
+}
+
+function syncCalendarForStaffOnDate_(dateString, staffName) {
+  var dateStr = normalizeDateString_(dateString);
+  var targetStaff = String(staffName || '').trim();
+  if (!targetStaff) {
+    throw new Error('対象スタッフが未指定です。');
+  }
+
+  var spreadsheet = findSpreadsheetGlobal(targetStaff, YEAR);
+  var target = findTargetRow_(spreadsheet, dateStr);
+  if (target.rowNumber === -1) {
+    throw new Error('指定された日付 (' + dateStr + ') の行が見つかりませんでした。');
+  }
+
+  var lib = getRootSearchLib_();
+  if (!lib) {
+    throw new Error('カレンダー連携ライブラリが見つかりません。');
+  }
+  if (typeof lib.refreshAttendanceForStaffOnDate !== 'function') {
+    throw new Error('ライブラリに refreshAttendanceForStaffOnDate が存在しません。ライブラリバージョンを確認してください。');
+  }
+
+  var result = lib.refreshAttendanceForStaffOnDate(targetStaff, dateStr);
+  if (!result || result.success !== true) {
+    throw new Error('カレンダー予定の取得に失敗しました。');
+  }
+
+  writeRowData_(target.sheet, target.rowNumber, {
+    C: '', D: '', E: '', AI: '',
+    H: '', L: '', M: '', N: '', AG: '',
+    Q: '', U: '', V: '', W: '', AH: '', AJ: '',
+    X: '', Y: '', Z: '', AA: '', AB: '', AC: ''
+  }, false);
+  writeRowData_(target.sheet, target.rowNumber, result.rowData || {}, false);
+
+  PropertiesService.getUserProperties().setProperty('LAST_SHEET_NAME_' + targetStaff, target.sheet.getName());
+
+  return {
+    success: true,
+    rowData: readRowData_(target.sheet, target.rowNumber),
+    rowNumber: target.rowNumber,
+    targetStaffName: targetStaff,
+    appointmentCount: (result.appointments || []).length
+  };
 }
 
 function getRootSearchLib_() {
