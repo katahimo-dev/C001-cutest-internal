@@ -707,6 +707,29 @@ function outputToSheetAppend(rows, sheetName) {
   }
 }
 
+function normalizeSheetDateValue_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, "Asia/Tokyo", "yyyy-MM-dd");
+  }
+
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const normalizedText = raw.replace(/\./g, "/");
+  const parsed = new Date(normalizedText.replace(/-/g, "/"));
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, "Asia/Tokyo", "yyyy-MM-dd");
+  }
+
+  return raw.replace(/\//g, "-");
+}
+
+function isTargetSheetDate_(value, dateStr) {
+  return normalizeSheetDateValue_(value) === dateStr;
+}
+
 function outputToAttendanceFile(rows, sheetName, dateStr) {
   const ss = getOrCreateSpreadsheetInFolder(CONFIG.ATTENDANCE_FOLDER_ID, CONFIG.ATTENDANCE_FILE_NAME);
   let sheet = ss.getSheetByName(sheetName);
@@ -726,12 +749,10 @@ function outputToAttendanceFile(rows, sheetName, dateStr) {
 
   const lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
-    const dateValues = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
-    const dateSlash = dateStr.replace(/-/g, '/');
+    const dateValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
 
     for (let i = dateValues.length - 1; i >= 0; i--) {
-      const rowDate = (dateValues[i][0] || "").toString();
-      if (rowDate.indexOf(dateStr) !== -1 || rowDate.indexOf(dateSlash) !== -1) {
+      if (isTargetSheetDate_(dateValues[i][0], dateStr)) {
         sheet.deleteRow(i + 2);
       }
     }
@@ -958,13 +979,10 @@ function refreshAttendanceForStaffOnDate(staffName, dateString) {
     const lastRow = sheet.getLastRow();
     if (lastRow >= 2) {
       const dateStaffVals = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
-      const targetHyphen = dateStr;
-      const targetSlash = dateStr.replace(/-/g, "/");
       for (let i = dateStaffVals.length - 1; i >= 0; i--) {
-        const rowDate = String(dateStaffVals[i][0] || "").trim();
         const rowStaff = normalize(String(dateStaffVals[i][1] || ""));
         if (rowStaff === normalize(normalizedStaff) &&
-            (rowDate.indexOf(targetHyphen) !== -1 || rowDate.indexOf(targetSlash) !== -1)) {
+            isTargetSheetDate_(dateStaffVals[i][0], dateStr)) {
           sheet.deleteRow(i + 2);
         }
       }

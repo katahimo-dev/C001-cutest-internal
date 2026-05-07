@@ -81,6 +81,20 @@ function doGet() {
 // }
 
 // ==========================================
+// ★ログアウト機能
+// ==========================================
+
+function logout() {
+  try {
+    var userProps = PropertiesService.getUserProperties();
+    userProps.deleteAllProperties();
+    return { success: true };
+  } catch (e) {
+    throw new Error('ログアウト処理に失敗しました: ' + e.message);
+  }
+}
+
+// ==========================================
 // 2. スタッフ特定・権限確認
 // ==========================================
 
@@ -583,31 +597,51 @@ function updateData(formObject) {
 
 function findSpreadsheetGlobal(staffName, year) {
   var searchKey = staffName + '_出勤簿_' + year + '年度';
-  
-  var query = "title = '" + searchKey + "' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
-  
-  try {
-    var files = DriveApp.searchFiles(query);
-    if (files.hasNext()) {
-      return SpreadsheetApp.open(files.next());
-    }
-  } catch (e) {
-    console.log("検索クエリエラー(title一致): " + e.message);
+
+  var exactMatches = DriveApp.searchFiles(
+    "title = '" + searchKey + "' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+  );
+  var newestExactFile = getNewestFileFromIterator_(exactMatches);
+  if (newestExactFile) {
+    return SpreadsheetApp.open(newestExactFile);
   }
-  
-  var searchKeyNoSpace = searchKey.replace(/\s+/g, '').replace(/　/g, '');
-  var allFiles = DriveApp.searchFiles("title contains '" + staffName + "' and title contains '出勤簿' and trashed = false");
-  
-  while (allFiles.hasNext()) {
-    var file = allFiles.next();
-    var fileName = file.getName();
-    var normalized = fileName.replace(/\s+/g, '').replace(/　/g, '');
-    if (normalized === searchKeyNoSpace) {
-      return SpreadsheetApp.open(file);
+
+  var searchKeyNoSpace = normalizeSpreadsheetName_(searchKey);
+  var allCandidates = DriveApp.searchFiles(
+    "title contains '" + staffName + "' and title contains '出勤簿' and trashed = false"
+  );
+  var newestNormalizedFile = getNewestFileFromIterator_(allCandidates, function(file) {
+    return normalizeSpreadsheetName_(file.getName()) === searchKeyNoSpace;
+  });
+  if (newestNormalizedFile) {
+    return SpreadsheetApp.open(newestNormalizedFile);
+  }
+
+  throw new Error('Drive上に出勤簿ファイルが見つかりません。\n検索したファイル名: ' + searchKey);
+}
+
+function getNewestFileFromIterator_(files, matcher) {
+  var newestFile = null;
+  var newestTime = -1;
+
+  while (files.hasNext()) {
+    var file = files.next();
+    if (matcher && !matcher(file)) {
+      continue;
+    }
+
+    var createdTime = file.getDateCreated().getTime();
+    if (!newestFile || createdTime > newestTime) {
+      newestFile = file;
+      newestTime = createdTime;
     }
   }
 
-  throw new Error('あなたの出勤簿ファイルが見つかりません。\n検索したファイル名: ' + searchKey);
+  return newestFile;
+}
+
+function normalizeSpreadsheetName_(name) {
+  return String(name || '').replace(/\s+/g, '').replace(/　/g, '');
 }
 
 function sendAppUrlToSelected() {

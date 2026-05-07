@@ -163,7 +163,74 @@ function sendLineWorksMessage(token, userId, text) {
 
 
   const res = UrlFetchApp.fetch(url, options);
-  console.log(`送信結果 (${userId}): ${res.getContentText()}`);
+  const statusCode = res.getResponseCode();
+  const body = res.getContentText();
+  console.log(`送信結果 (${userId}) [${statusCode}]: ${body}`);
+
+  return {
+    success: statusCode >= 200 && statusCode < 300,
+    statusCode: statusCode,
+    body: body,
+    userId: userId
+  };
+}
+
+/**
+ * LINE WORKS テスト送信（固定宛先）
+ * デフォルト宛先: cu.45082@cutestjapan
+ */
+function testSendLineWorksMessageToCu45082() {
+  return sendLineWorksDebugMessage('cu.45082@cutestjapan');
+}
+
+/**
+ * LINE WORKS テスト送信（任意宛先）
+ * @param {string} userId LINE WORKS ユーザーID（例: cu.85604@cutestjapan）
+ */
+function sendLineWorksDebugMessage(userId) {
+  const targetUserId = String(userId || 'cu.85604@cutestjapan').trim();
+  if (!targetUserId) {
+    throw new Error('送信先 userId が空です。');
+  }
+
+  const token = getLineWorksAccessToken();
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  const text = [
+    '【LineWorks テスト送信】',
+    `時刻: ${now}`,
+    `宛先: ${targetUserId}`,
+    `BOT_ID: ${CONFIG.LW.BOT_ID || '(未設定)'}`
+  ].join('\n');
+
+  const resultRaw = sendLineWorksMessage(token, targetUserId, text);
+  const result = (resultRaw && typeof resultRaw === 'object') ? resultRaw : {
+    success: false,
+    statusCode: null,
+    body: 'sendLineWorksMessage から戻り値が返っていません。旧版コードが実行されている可能性があります。',
+    userId: targetUserId
+  };
+
+  if (!result.success && targetUserId.indexOf('@') !== -1) {
+    const shortId = targetUserId.split('@')[0];
+    console.warn(`メール形式IDで失敗したため、ローカルIDで再試行します: ${shortId}`);
+    const retryRaw = sendLineWorksMessage(token, shortId, text + '\n(再試行: ローカルID)');
+    const retry = (retryRaw && typeof retryRaw === 'object') ? retryRaw : {
+      success: false,
+      statusCode: null,
+      body: '再試行でも sendLineWorksMessage の戻り値が取得できませんでした。',
+      userId: shortId
+    };
+    return {
+      success: retry.success,
+      firstTry: result,
+      retry: retry
+    };
+  }
+
+  return {
+    success: result.success,
+    firstTry: result
+  };
 }
 
 /**

@@ -290,6 +290,25 @@
         font-size: 12px;
       }
 
+      .logout-btn {
+        background: #ff6b6b;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-weight: bold;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(255, 107, 107, 0.3);
+        transition: background 0.2s;
+      }
+      .logout-btn:hover {
+        background: #ff5252;
+      }
+      .logout-btn:active {
+        transform: scale(0.98);
+      }
+
       #loading, #error-msg, #success-msg { display: none; padding: 20px; margin-bottom: 25px; text-align: center; font-weight: bold; border-radius: 15px; font-size: 16px; }
       #error-msg { color: #d32f2f; background: #ffcdd2; border: 2px solid #ef9a9a; }
       #success-msg { color: #388e3c; background: #c8e6c9; border: 2px solid #a5d6a7; }
@@ -322,6 +341,19 @@
       </svg>
       <h2>スマホde出勤簿修正</h2>
       <div id="user-info" class="user-name">読み込み中...</div>
+      <button id="logout-btn" class="logout-btn" onclick="openLogoutModal()" style="display:none; margin-top: 10px;">ログアウト</button>
+    </div>
+
+    <!-- ログアウト確認モーダル -->
+    <div id="logout-modal" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title">ログアウトしますか？</h3>
+        <p class="modal-note">別のアカウント（管理者または個人）で入り直したい場合は、ログアウトしてください。</p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-cancel" onclick="closeLogoutModal()">キャンセル</button>
+          <button class="modal-btn modal-retry" onclick="confirmLogout()">ログアウト</button>
+        </div>
+      </div>
     </div>
 
     <div class="container">
@@ -498,6 +530,7 @@
                 userText += '（管理者）';
               }
               document.getElementById('user-info').textContent = userText;
+              document.getElementById('logout-btn').style.display = 'inline-block';
 
               setupAdminPanel();
               setupDropdown('col_I', data.optionsI);
@@ -1127,6 +1160,32 @@
       }
       
       function hideMessages() { document.getElementById('error-msg').style.display='none'; document.getElementById('success-msg').style.display='none'; }
+
+      function openLogoutModal() {
+        document.getElementById('logout-modal').style.display = 'flex';
+      }
+
+      function closeLogoutModal() {
+        document.getElementById('logout-modal').style.display = 'none';
+      }
+
+      function openAccountSwitchPage_() {
+        window.open('https://accounts.google.com/Logout', '_blank', 'noopener,noreferrer');
+      }
+
+      function confirmLogout() {
+        google.script.run
+          .withSuccessHandler(function() {
+            closeLogoutModal();
+            showSuccess('ログアウトしました。Googleアカウント切替ページを新しいタブで開きました。切替後にこのページを再読み込みしてください。');
+            openAccountSwitchPage_();
+          })
+          .withFailureHandler(function(err) {
+            closeLogoutModal();
+            showError('ログアウト処理中にエラーが発生しました: ' + err.message);
+          })
+          .logout();
+      }
     </script>
   </body>
 </html>
