@@ -536,14 +536,34 @@
               setupDropdown('col_I', data.optionsI);
               setupDropdown('col_R', data.optionsR);
             } else {
-              showError("初期エラー: " + data.error);
+              handleInitialError_(data);
             }
           })
           .withFailureHandler(function(e) {
-            showError("サーバー接続エラー: " + e);
+            handleInitialError_({
+              success: false,
+              showLogout: true,
+              error: "サーバー接続エラー: " + e
+            });
           })
           .getInitialData();
       };
+
+      function handleInitialError_(data) {
+        var message = '初期エラー: ' + (data && data.error ? data.error : '不明なエラー');
+        showError(message);
+
+        var accountEmail = data && data.accountEmail ? data.accountEmail : '';
+        if (accountEmail) {
+          document.getElementById('user-info').textContent = '現在のGoogleアカウント: ' + accountEmail;
+        } else {
+          document.getElementById('user-info').textContent = '現在のGoogleアカウントを取得できませんでした';
+        }
+
+        if (!data || data.showLogout !== false) {
+          document.getElementById('logout-btn').style.display = 'inline-block';
+        }
+      }
 
       function checkDateLimit() {
         var dateVal = document.getElementById('target-date').value;

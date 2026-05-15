@@ -204,6 +204,55 @@ function getAccessContext_(requestedStaffName) {
   };
 }
 
+function getCurrentUserEmailSafe_() {
+  try {
+    var activeEmail = String(Session.getActiveUser().getEmail() || '').trim();
+    if (activeEmail) {
+      return activeEmail;
+    }
+  } catch (e1) {}
+
+  try {
+    var effectiveEmail = String(Session.getEffectiveUser().getEmail() || '').trim();
+    if (effectiveEmail) {
+      return effectiveEmail;
+    }
+  } catch (e2) {}
+
+  return '';
+}
+
+function buildInitialAccessError_(errorObj) {
+  var raw = String(errorObj || '');
+  var currentEmail = getCurrentUserEmailSafe_();
+  var shownEmail = currentEmail || '取得できませんでした';
+  var accessDeniedBySpreadsheet =
+    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1 ||
+    raw.indexOf('権限が必要') !== -1;
+
+  if (accessDeniedBySpreadsheet) {
+    return {
+      success: false,
+      showLogout: true,
+      accountEmail: currentEmail,
+      error:
+        'このアカウントでは対象スプレッドシートを閲覧できません。\n' +
+        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
+        'ログアウトボタンから別アカウントへ切り替えて、再度アクセスしてください。'
+    };
+  }
+
+  return {
+    success: false,
+    showLogout: true,
+    accountEmail: currentEmail,
+    error:
+      '初期化に失敗しました。\n' +
+      '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
+      '詳細: ' + raw
+  };
+}
+
 // ==========================================
 // 3. データ取得処理
 // ==========================================
@@ -246,7 +295,7 @@ function getInitialData() {
       optionsAN: ['1', '2', '3', '4', '5']
     };
   } catch (e) {
-    return { success: false, error: e.toString() };
+    return buildInitialAccessError_(e);
   }
 }
 
