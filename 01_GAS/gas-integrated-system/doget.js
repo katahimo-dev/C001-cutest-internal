@@ -226,19 +226,30 @@ function buildInitialAccessError_(errorObj) {
   var raw = String(errorObj || '');
   var currentEmail = getCurrentUserEmailSafe_();
   var shownEmail = currentEmail || '取得できませんでした';
-  var accessDeniedBySpreadsheet =
-    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1 ||
-    raw.indexOf('権限が必要') !== -1;
 
-  if (accessDeniedBySpreadsheet) {
+  // 権限・認証エラー全般（SpreadsheetApp / DriveApp / その他スコープ不足）を検出
+  var isAuthError =
+    raw.indexOf('権限がありません') !== -1 ||
+    raw.indexOf('権限が必要') !== -1 ||
+    raw.indexOf('googleapis.com/auth/') !== -1 ||
+    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1 ||
+    raw.indexOf('DriveApp.') !== -1;
+
+  if (isAuthError) {
     return {
       success: false,
       showLogout: true,
+      needsReauth: true,
       accountEmail: currentEmail,
       error:
-        'このアカウントでは対象スプレッドシートを閲覧できません。\n' +
-        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
-        'ログアウトボタンから別アカウントへ切り替えて、再度アクセスしてください。'
+        'アプリの権限が付与されていません。\n' +
+        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n\n' +
+        '【対処方法】\n' +
+        '① 下の「ログアウト」ボタンで一度ログアウトし、\n' +
+        '　 このアカウントで再度アクセスしてください。\n' +
+        '② アクセス時に表示される「権限を許可」画面で\n' +
+        '　 「許可」を押してください。\n' +
+        '③ それでも解決しない場合は管理者へご連絡ください。'
     };
   }
 
