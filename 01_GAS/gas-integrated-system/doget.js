@@ -227,15 +227,31 @@ function buildInitialAccessError_(errorObj) {
   var currentEmail = getCurrentUserEmailSafe_();
   var shownEmail = currentEmail || '取得できませんでした';
 
-  // 権限・認証エラー全般（SpreadsheetApp / DriveApp / その他スコープ不足）を検出
-  var isAuthError =
-    raw.indexOf('権限がありません') !== -1 ||
-    raw.indexOf('権限が必要') !== -1 ||
-    raw.indexOf('googleapis.com/auth/') !== -1 ||
-    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1 ||
-    raw.indexOf('DriveApp.') !== -1;
+  // ① スプレッドシート閲覧権限なし（バインドシートへのアクセス拒否）
+  //   → 別アカウントへの切り替えを案内
+  var isSpreadsheetAccessDenied =
+    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1;
 
-  if (isAuthError) {
+  // ② OAuth スコープ未認証（DriveApp scope など未付与）
+  //   → 権限許可の再実施を案内
+  var isOAuthScopeError =
+    (raw.indexOf('DriveApp.') !== -1 && raw.indexOf('権限がありません') !== -1) ||
+    raw.indexOf('googleapis.com/auth/') !== -1 ||
+    (raw.indexOf('権限が必要') !== -1 && !isSpreadsheetAccessDenied);
+
+  if (isSpreadsheetAccessDenied) {
+    return {
+      success: false,
+      showLogout: true,
+      accountEmail: currentEmail,
+      error:
+        'このアカウントでは対象スプレッドシートを閲覧できません。\n' +
+        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
+        'ログアウトボタンから別アカウントへ切り替えて、再度アクセスしてください。'
+    };
+  }
+
+  if (isOAuthScopeError) {
     return {
       success: false,
       showLogout: true,
