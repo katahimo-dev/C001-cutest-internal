@@ -1,6 +1,6 @@
-<!-- skill-ninja-START -->
+<!-- agent-ninja-START -->
 ## Agent Skills
 
 No skills installed yet. Use "Agent Skills Ninja: Search Skills" to install skills.
 
-<!-- skill-ninja-END -->
+<!-- agent-ninja-END -->

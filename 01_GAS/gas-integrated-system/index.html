@@ -308,6 +308,13 @@
       .logout-btn:active {
         transform: scale(0.98);
       }
+      .reauth-btn {
+        background: #4caf50;
+        box-shadow: 0 2px 5px rgba(76, 175, 80, 0.3);
+      }
+      .reauth-btn:hover {
+        background: #43a047;
+      }
 
       #loading, #error-msg, #success-msg { display: none; padding: 20px; margin-bottom: 25px; text-align: center; font-weight: bold; border-radius: 15px; font-size: 16px; }
       #error-msg { color: #d32f2f; background: #ffcdd2; border: 2px solid #ef9a9a; }
@@ -341,6 +348,7 @@
       </svg>
       <h2>スマホde出勤簿修正</h2>
       <div id="user-info" class="user-name">読み込み中...</div>
+      <button id="reauth-btn" class="logout-btn reauth-btn" onclick="openAuthorizationPage_()" style="display:none; margin-top: 10px;">権限を許可する</button>
       <button id="logout-btn" class="logout-btn" onclick="openLogoutModal()" style="display:none; margin-top: 10px;">ログアウト</button>
     </div>
 
@@ -504,6 +512,7 @@
         isAdmin: false,
         targetStaffName: '',
         staffNames: [],
+        authorizeUrl: '',
         syncStaffCheckState: {},
         syncRunning: false,
         lastFailedTargets: []
@@ -530,6 +539,7 @@
                 userText += '（管理者）';
               }
               document.getElementById('user-info').textContent = userText;
+              document.getElementById('reauth-btn').style.display = 'none';
               document.getElementById('logout-btn').style.display = 'inline-block';
 
               setupAdminPanel();
@@ -552,12 +562,19 @@
       function handleInitialError_(data) {
         var message = '初期エラー: ' + (data && data.error ? data.error : '不明なエラー');
         showError(message);
+        APP_STATE.authorizeUrl = data && data.authorizeUrl ? data.authorizeUrl : '';
 
         var accountEmail = data && data.accountEmail ? data.accountEmail : '';
         if (accountEmail) {
           document.getElementById('user-info').textContent = '現在のGoogleアカウント: ' + accountEmail;
         } else {
           document.getElementById('user-info').textContent = '現在のGoogleアカウントを取得できませんでした';
+        }
+
+        if (data && data.needsReauth === true && APP_STATE.authorizeUrl) {
+          document.getElementById('reauth-btn').style.display = 'inline-block';
+        } else {
+          document.getElementById('reauth-btn').style.display = 'none';
         }
 
         if (!data || data.showLogout !== false) {
@@ -1190,14 +1207,34 @@
       }
 
       function openAccountSwitchPage_() {
-        window.open('https://accounts.google.com/Logout', '_blank', 'noopener,noreferrer');
+        var continueUrl = encodeURIComponent(window.location.href);
+        var accountChooserUrl = 'https://accounts.google.com/AccountChooser?continue=' + continueUrl;
+        var logoutUrl = 'https://accounts.google.com/Logout?continue=' + encodeURIComponent(accountChooserUrl);
+        window.location.href = logoutUrl;
+      }
+
+      function openAuthorizationPage_() {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            var latestUrl = (res && res.success && res.url) ? res.url : '';
+            var authUrl = latestUrl || APP_STATE.authorizeUrl;
+            if (authUrl) {
+              window.open(authUrl, '_blank', 'noopener,noreferrer');
+              return;
+            }
+            showError('認可URLの取得に失敗しました。ログアウト後に再アクセスしてください。');
+          })
+          .withFailureHandler(function(err) {
+            showError('認可URLの取得に失敗しました: ' + err);
+          })
+          .getAuthorizationUrlForClient();
       }
 
       function confirmLogout() {
         google.script.run
           .withSuccessHandler(function() {
             closeLogoutModal();
-            showSuccess('ログアウトしました。Googleアカウント切替ページを新しいタブで開きました。切替後にこのページを再読み込みしてください。');
+            showSuccess('ログアウトしました。アカウント切替後に自動でこのWebアプリへ戻ります。');
             openAccountSwitchPage_();
           })
           .withFailureHandler(function(err) {

@@ -222,40 +222,63 @@ function getCurrentUserEmailSafe_() {
   return '';
 }
 
+function getAuthorizationUrlSafe_() {
+  try {
+    var info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+    if (info && typeof info.getAuthorizationUrl === 'function') {
+      return String(info.getAuthorizationUrl() || '');
+    }
+  } catch (e) {}
+  return '';
+}
+
+function getAuthorizationUrlForClient() {
+  try {
+    return {
+      success: true,
+      url: getAuthorizationUrlSafe_()
+    };
+  } catch (e) {
+    return {
+      success: false,
+      url: '',
+      error: String(e || '')
+    };
+  }
+}
+
 function buildInitialAccessError_(errorObj) {
   var raw = String(errorObj || '');
   var currentEmail = getCurrentUserEmailSafe_();
   var shownEmail = currentEmail || '取得できませんでした';
 
-  // ① スプレッドシート閲覧権限なし（バインドシートへのアクセス拒否）
-  //   → 別アカウントへの切り替えを案内
-  var isSpreadsheetAccessDenied =
-    raw.indexOf('SpreadsheetApp.getActiveSpreadsheet') !== -1;
-
-  // ② OAuth スコープ未認証（DriveApp scope など未付与）
-  //   → 権限許可の再実施を案内
-  var isOAuthScopeError =
-    (raw.indexOf('DriveApp.') !== -1 && raw.indexOf('権限がありません') !== -1) ||
+  // ① OAuth スコープ未認証（未許可・未承認）を最優先で判定
+  //    例: "SpreadsheetApp.getActiveSpreadsheet を呼び出す権限がありません。必要な権限: ..."
+  var hasScopeHint =
     raw.indexOf('googleapis.com/auth/') !== -1 ||
-    (raw.indexOf('権限が必要') !== -1 && !isSpreadsheetAccessDenied);
+    raw.indexOf('必要な権限') !== -1 ||
+    raw.indexOf('呼び出す権限がありません') !== -1;
+  var hasServiceMethod =
+    raw.indexOf('SpreadsheetApp.') !== -1 ||
+    raw.indexOf('DriveApp.') !== -1 ||
+    raw.indexOf('CalendarApp.') !== -1 ||
+    raw.indexOf('GmailApp.') !== -1;
+  var isOAuthScopeError = hasScopeHint && hasServiceMethod;
 
-  if (isSpreadsheetAccessDenied) {
-    return {
-      success: false,
-      showLogout: true,
-      accountEmail: currentEmail,
-      error:
-        'このアカウントでは対象スプレッドシートを閲覧できません。\n' +
-        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
-        'ログアウトボタンから別アカウントへ切り替えて、再度アクセスしてください。'
-    };
-  }
+  // ② スプレッドシート閲覧権限なし（ファイルアクセス拒否）
+  //    例: Service Spreadsheets failed while accessing document with id ...
+  var isSpreadsheetAccessDenied =
+    raw.indexOf('Service Spreadsheets failed while accessing document') !== -1 ||
+    raw.indexOf('アクセスする権限がありません') !== -1 ||
+    raw.indexOf('does not have permission') !== -1 ||
+    raw.indexOf('閲覧権限') !== -1;
 
   if (isOAuthScopeError) {
     return {
       success: false,
       showLogout: true,
       needsReauth: true,
+      authorizeUrl: getAuthorizationUrlSafe_(),
       accountEmail: currentEmail,
       error:
         'アプリの権限が付与されていません。\n' +
@@ -266,6 +289,18 @@ function buildInitialAccessError_(errorObj) {
         '② アクセス時に表示される「権限を許可」画面で\n' +
         '　 「許可」を押してください。\n' +
         '③ それでも解決しない場合は管理者へご連絡ください。'
+    };
+  }
+
+  if (isSpreadsheetAccessDenied) {
+    return {
+      success: false,
+      showLogout: true,
+      accountEmail: currentEmail,
+      error:
+        'このアカウントでは対象スプレッドシートを閲覧できません。\n' +
+        '現在ログイン中のGoogleアカウント: ' + shownEmail + '\n' +
+        'ログアウトボタンから別アカウントへ切り替えて、再度アクセスしてください。'
     };
   }
 
